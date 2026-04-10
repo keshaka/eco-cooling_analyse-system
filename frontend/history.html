@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Historical Data | IoT Monitoring</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <script src="assets/js/common.js" defer></script>
+    <script src="assets/js/history.js" defer></script>
+  </head>
+  <body>
+    <nav class="nav">
+      <div class="layout nav-inner">
+        <div class="brand">Dual ESP32 Environmental Monitor</div>
+        <div class="nav-links">
+          <a href="index.html">Dashboard</a>
+          <a href="history.html">Historical Data</a>
+          <a href="compare.html">Comparison</a>
+          <button id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch to dark mode">🌙</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="layout">
+      <section class="hero fade-in">
+        <div>
+          <h1>Historical Data Explorer</h1>
+          <p>Pick a date range to inspect trends and export merged data as CSV.</p>
+        </div>
+      </section>
+
+      <section class="section panel fade-in">
+        <div class="filters">
+          <label>
+            Start Date
+            <input type="date" id="startDate" />
+          </label>
+          <label>
+            End Date
+            <input type="date" id="endDate" />
+          </label>
+          <button id="loadHistory" type="button">Load Data</button>
+          <button id="exportCsv" type="button">Export CSV</button>
+        </div>
+      </section>
+
+      <section class="section panel fade-in">
+        <h2>Merged Data Preview</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Moss Outdoor Temp (degC)</th>
+                <th>Moss Outdoor Humidity (%)</th>
+                <th>Moss Surface Temp (degC)</th>
+                <th>Near Moss Temp (degC)</th>
+                <th>Near Moss Humidity (%)</th>
+                <th>Moss Wall Temp (degC)</th>
+                <th>Non-Moss Surface Temp (degC)</th>
+                <th>Near Non-Moss Temp (degC)</th>
+                <th>Near Non-Moss Humidity (%)</th>
+                <th>Non-Moss Wall Temp (degC)</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody"></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="paginationControls" style="display: none; margin-top: 1rem; text-align: center;">
+          <button id="prevPage" type="button">← Previous</button>
+          <span id="pageInfo" style="margin: 0 1rem;"></span>
+          <button id="nextPage" type="button">Next →</button>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

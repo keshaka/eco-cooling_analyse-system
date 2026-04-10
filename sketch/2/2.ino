@@ -8,10 +8,10 @@
 
 // ---------------- WIFI ----------------
 const char* ssid = "Keshaka";
-const char* password = "Qwer3552";
+const char* password = "";
 
 // ---------------- SERVER ----------------
-const char* serverUrl = "http://54.169.243.167:8000/api/data/non-moss";
+const char* serverUrl = "";
 
 // ---------------- PINS ----------------
 #define DHT_PIN 4

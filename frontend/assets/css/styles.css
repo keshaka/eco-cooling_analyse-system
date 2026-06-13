@@ -1,19 +1,4 @@
 :root {
-  --bg: #f4f6ef;
-  --bg-accent: radial-gradient(circle at 15% 20%, #d9f0d1 0%, transparent 35%),
-    radial-gradient(circle at 85% 10%, #ffe7bf 0%, transparent 30%),
-    linear-gradient(180deg, #f5f7ef 0%, #ecefe5 100%);
-  --surface: #ffffff;
-  --surface-soft: #f8fbf4;
-  --text: #1d251f;
-  --muted: #5f6b61;
-  --brand: #2d7a4b;
-  --brand-2: #a35a1f;
-  --border: #d5ddd1;
-  --shadow: 0 12px 30px rgba(29, 37, 31, 0.08);
-}
-
-body.dark {
   --bg: #121711;
   --bg-accent: radial-gradient(circle at 12% 18%, #25412f 0%, transparent 35%),
     radial-gradient(circle at 80% 12%, #6f451f 0%, transparent 28%),
@@ -347,4 +332,103 @@ th {
   .pagination button {
     width: 100%;
   }
+}
+
+/* ── Export page styles ─────────────────────────────────────────── */
+
+.btn-accent {
+  background: linear-gradient(135deg, var(--brand), #4eb872) !important;
+  color: #121711 !important;
+  border-color: var(--brand) !important;
+  font-weight: 600;
+}
+
+.btn-accent:hover {
+  filter: brightness(1.1);
+}
+
+.chart-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.chart-card-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.btn-export-single,
+.btn-export-group {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-export-single:hover,
+.btn-export-group:hover {
+  background: color-mix(in srgb, var(--brand) 15%, var(--surface));
+  border-color: var(--brand);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.export-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.side-by-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .side-by-side {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+}
+
+.dot-moss {
+  background: #2d7a4b;
+}
+
+.dot-nonmoss {
+  background: #d4732f;
 }

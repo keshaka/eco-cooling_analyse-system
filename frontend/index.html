@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IoT Monitoring Dashboard</title>
+    <title>Urban Heat — Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -18,12 +18,12 @@
   <body>
     <nav class="nav">
       <div class="layout nav-inner">
-        <div class="brand">Dual ESP32 Environmental Monitor</div>
+        <div class="brand">Urban Heat</div>
         <div class="nav-links">
           <a href="index.html">Dashboard</a>
           <a href="history.html">Historical Data</a>
           <a href="compare.html">Comparison</a>
-          <button id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch to dark mode">🌙</button>
+          <a href="export.html">Export</a>
         </div>
       </div>
     </nav>
@@ -37,84 +37,112 @@
         <div id="lastUpdated" class="muted">Last update: --</div>
       </section>
 
-      <section class="section panel fade-in">
+      <!-- ── Outdoor Environment (shared ambient readings) ── -->
+      <section class="section panel panel-outdoor fade-in">
         <div class="panel-header">
           <div>
-            <h2>Moss Sensor Latest Readings</h2>
-            <p class="muted">Current values from the moss-side node.</p>
+            <h2><span class="icon-outdoor">🌤</span> Outdoor Environment</h2>
+            <p class="muted">Ambient conditions shared by both sensor nodes.</p>
           </div>
         </div>
-        <div class="grid cards sensor-cards">
-          <article class="card">
-            <h3>Outdoor Temperature</h3>
-            <div class="value" id="mossOutdoorTemp">-- <small>degC</small></div>
+        <div class="grid cards outdoor-cards">
+          <article class="card card-outdoor">
+            <h3>Temperature</h3>
+            <div class="value" id="mossOutdoorTemp">-- <small>°C</small></div>
           </article>
-          <article class="card">
-            <h3>Outdoor Humidity</h3>
+          <article class="card card-outdoor">
+            <h3>Humidity</h3>
             <div class="value" id="mossOutdoorHumidity">-- <small>%</small></div>
           </article>
-          <article class="card">
-            <h3>Surface Temperature</h3>
-            <div class="value" id="mossSurface">-- <small>degC</small></div>
-          </article>
-          <article class="card">
-            <h3>Near Moss Temperature</h3>
-            <div class="value" id="mossAirTemp">-- <small>degC</small></div>
-          </article>
-          <article class="card">
-            <h3>Near Moss Humidity</h3>
-            <div class="value" id="mossHumidity">-- <small>%</small></div>
-          </article>
-          <article class="card">
-            <h3>Wall Temperature</h3>
-            <div class="value" id="mossWallTemp">-- <small>degC</small></div>
-          </article>
         </div>
       </section>
 
-      <section class="section panel fade-in">
-        <div class="panel-header">
-          <div>
-            <h2>Non-Moss Sensor Latest Readings</h2>
-            <p class="muted">Current values from the non-moss node.</p>
+      <!-- ── Moss & Non-Moss readings side-by-side ── -->
+      <div class="side-by-side fade-in">
+        <section class="section panel panel-moss">
+          <div class="panel-header">
+            <div>
+              <h2><span class="dot dot-moss"></span> Moss Sensor</h2>
+              <p class="muted">Readings from the moss-side node.</p>
+            </div>
           </div>
-        </div>
-        <div class="grid cards sensor-cards">
-          <article class="card">
-            <h3>Surface Temperature</h3>
-            <div class="value" id="nonMossSurface">-- <small>degC</small></div>
-          </article>
-          <article class="card">
-            <h3>Near Non-Moss Temperature</h3>
-            <div class="value" id="nonMossAirTemp">-- <small>degC</small></div>
-          </article>
-          <article class="card">
-            <h3>Near Non-Moss Humidity</h3>
-            <div class="value" id="nonMossHumidity">-- <small>%</small></div>
-          </article>
-          <article class="card">
-            <h3>Wall Temperature</h3>
-            <div class="value" id="nonMossWallTemp">-- <small>degC</small></div>
-          </article>
-        </div>
-      </section>
+          <div class="grid cards sensor-cards">
+            <article class="card">
+              <h3>Surface Temperature</h3>
+              <div class="value" id="mossSurface">-- <small>°C</small></div>
+            </article>
+            <article class="card">
+              <h3>Near Moss Temperature</h3>
+              <div class="value" id="mossAirTemp">-- <small>°C</small></div>
+            </article>
+            <article class="card">
+              <h3>Near Moss Humidity</h3>
+              <div class="value" id="mossHumidity">-- <small>%</small></div>
+            </article>
+            <article class="card">
+              <h3>Wall Temperature</h3>
+              <div class="value" id="mossWallTemp">-- <small>°C</small></div>
+            </article>
+          </div>
+        </section>
 
-      <section class="section panel fade-in">
+        <section class="section panel panel-nonmoss">
+          <div class="panel-header">
+            <div>
+              <h2><span class="dot dot-nonmoss"></span> Non-Moss Sensor</h2>
+              <p class="muted">Readings from the non-moss node.</p>
+            </div>
+          </div>
+          <div class="grid cards sensor-cards">
+            <article class="card">
+              <h3>Surface Temperature</h3>
+              <div class="value" id="nonMossSurface">-- <small>°C</small></div>
+            </article>
+            <article class="card">
+              <h3>Near Non-Moss Temperature</h3>
+              <div class="value" id="nonMossAirTemp">-- <small>°C</small></div>
+            </article>
+            <article class="card">
+              <h3>Near Non-Moss Humidity</h3>
+              <div class="value" id="nonMossHumidity">-- <small>%</small></div>
+            </article>
+            <article class="card">
+              <h3>Wall Temperature</h3>
+              <div class="value" id="nonMossWallTemp">-- <small>°C</small></div>
+            </article>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── Outdoor Trend Charts ── -->
+      <section class="section panel panel-outdoor fade-in">
         <div class="panel-header">
           <div>
-            <h2>Moss Sensor Trend Graphs</h2>
-            <p class="muted">Separate charts for each moss-side metric.</p>
+            <h2><span class="icon-outdoor">🌤</span> Outdoor Trends</h2>
+            <p class="muted">Ambient temperature and humidity over time.</p>
           </div>
         </div>
-        <div class="grid charts sensor-charts">
+        <div class="grid charts outdoor-charts">
           <article class="panel chart-card">
-            <h3>Outdoor Temperature</h3>
+            <h3>Temperature</h3>
             <div class="chart-wrap"><canvas id="mossOutdoorTempChart"></canvas></div>
           </article>
           <article class="panel chart-card">
-            <h3>Outdoor Humidity</h3>
+            <h3>Humidity</h3>
             <div class="chart-wrap"><canvas id="mossOutdoorHumidityChart"></canvas></div>
           </article>
+        </div>
+      </section>
+
+      <!-- ── Moss Trend Charts ── -->
+      <section class="section panel panel-moss fade-in">
+        <div class="panel-header">
+          <div>
+            <h2><span class="dot dot-moss"></span> Moss Sensor Trends</h2>
+            <p class="muted">Individual charts for each moss-side metric.</p>
+          </div>
+        </div>
+        <div class="grid charts sensor-charts">
           <article class="panel chart-card">
             <h3>Surface Temperature</h3>
             <div class="chart-wrap"><canvas id="mossSurfaceChart"></canvas></div>
@@ -134,11 +162,12 @@
         </div>
       </section>
 
-      <section class="section panel fade-in">
+      <!-- ── Non-Moss Trend Charts ── -->
+      <section class="section panel panel-nonmoss fade-in">
         <div class="panel-header">
           <div>
-            <h2>Non-Moss Sensor Trend Graphs</h2>
-            <p class="muted">Separate charts for each non-moss metric.</p>
+            <h2><span class="dot dot-nonmoss"></span> Non-Moss Sensor Trends</h2>
+            <p class="muted">Individual charts for each non-moss metric.</p>
           </div>
         </div>
         <div class="grid charts sensor-charts">
@@ -161,7 +190,7 @@
         </div>
       </section>
 
-      <p class="footer-note">Project: Comparative Environmental Monitoring of Moss-Based Cooling Using Dual ESP32 System</p>
+      <p class="footer-note">Urban Heat — Comparative Environmental Monitoring of Moss-Based Cooling</p>
     </main>
   </body>
 </html>

@@ -1,4 +1,4 @@
-# Comparative Environmental Monitoring of Moss-Based Cooling
+# Urban Heat — Comparative Environmental Monitoring of Moss-Based Cooling
 
 IoT monitoring project that collects, stores, and compares environmental readings from two ESP32 nodes:
 
@@ -45,4 +45,5 @@ Open: http://127.0.0.1:5500/index.html
 - `POST /api/data/non-moss`
 - `GET /api/data/latest`
 - `GET /api/data/history?start=YYYY-MM-DD&end=YYYY-MM-DD`
+- `GET /api/data/history/paginated?start=YYYY-MM-DD&end=YYYY-MM-DD&page=1&per_page=30`
 - `GET /api/data/compare`

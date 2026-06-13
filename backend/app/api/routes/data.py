@@ -10,6 +10,7 @@ from app.crud.data import (
     create_non_moss_data,
     get_comparison_metrics,
     get_history,
+    get_history_paginated,
     get_latest_moss,
     get_latest_non_moss,
 )
@@ -20,10 +21,12 @@ from app.schemas.data import (
     HistoryQuery,
     HistoryResponse,
     LatestDataResponse,
+    MergedRow,
     MossDataCreate,
     MossDataRead,
     NonMossDataCreate,
     NonMossDataRead,
+    PaginatedHistoryResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,7 +94,12 @@ def latest_data(db: Session = Depends(get_db)):
     non_moss = get_latest_non_moss(db)
 
     cooling_delta = None
-    if moss is not None and non_moss is not None:
+    if (
+        moss is not None
+        and non_moss is not None
+        and moss.moss_surface_temp is not None
+        and non_moss.non_moss_surface_temp is not None
+    ):
         cooling_delta = round(non_moss.non_moss_surface_temp - moss.moss_surface_temp, 3)
 
     return LatestDataResponse(
@@ -120,6 +128,43 @@ def historical_data(
         )
     except SQLAlchemyError as exc:
         logger.exception("Database error while reading history")
+        raise HTTPException(status_code=500, detail="Unable to fetch historical data") from exc
+
+
+@router.get("/history/paginated", response_model=PaginatedHistoryResponse)
+def paginated_history(
+    start: str = Query(..., description="Start date in YYYY-MM-DD"),
+    end: str = Query(..., description="End date in YYYY-MM-DD"),
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    per_page: int = Query(30, ge=1, description="Rows per page"),
+    db: Session = Depends(get_db),
+):
+    try:
+        params = HistoryQuery(start=start, end=end)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        rows, total = get_history_paginated(db, params.start, params.end, page, per_page)
+        total_pages = max(1, -(-total // per_page))  # ceil division
+
+        # Convert timestamps to IST
+        mapped_rows = []
+        for row in rows:
+            r = dict(row)
+            if r.get("timestamp"):
+                r["timestamp"] = _to_ist(r["timestamp"])
+            mapped_rows.append(MergedRow(**r))
+
+        return PaginatedHistoryResponse(
+            rows=mapped_rows,
+            page=page,
+            perPage=per_page,
+            totalRows=total,
+            totalPages=total_pages,
+        )
+    except SQLAlchemyError as exc:
+        logger.exception("Database error while reading paginated history")
         raise HTTPException(status_code=500, detail="Unable to fetch historical data") from exc
 
 

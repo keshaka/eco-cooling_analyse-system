@@ -72,6 +72,132 @@ def get_history(db: Session, start_date, end_date):
     return moss_rows, non_moss_rows
 
 
+# ── Server-side merge + pagination ──────────────────────────────────
+
+_MAX_MERGE_GAP_MS = 2 * 60 * 1000  # 2 minutes
+
+
+def _ts_ms(value):
+    """Return milliseconds since epoch for a datetime, or None."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.timestamp() * 1000
+    return None
+
+
+def _lower_bound(rows, target_ms):
+    lo, hi = 0, len(rows)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        mid_ms = _ts_ms(rows[mid].timestamp)
+        if mid_ms is None or mid_ms < target_ms:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+
+def _find_nearest_unmatched(rows, used, target_ms):
+    if not rows or target_ms is None:
+        return -1
+    pivot = _lower_bound(rows, target_ms)
+    left, right = pivot - 1, pivot
+    best_idx, best_diff = -1, float("inf")
+
+    while left >= 0 or right < len(rows):
+        checked = False
+        if left >= 0:
+            checked = True
+            if left not in used:
+                ms = _ts_ms(rows[left].timestamp)
+                if ms is not None:
+                    d = abs(ms - target_ms)
+                    if d < best_diff:
+                        best_diff, best_idx = d, left
+            left -= 1
+        if right < len(rows):
+            checked = True
+            if right not in used:
+                ms = _ts_ms(rows[right].timestamp)
+                if ms is not None:
+                    d = abs(ms - target_ms)
+                    if d < best_diff:
+                        best_diff, best_idx = d, right
+            right += 1
+
+        l_ms = _ts_ms(rows[left].timestamp) if left >= 0 else None
+        r_ms = _ts_ms(rows[right].timestamp) if right < len(rows) else None
+        l_gap = float("inf") if l_ms is None else abs(target_ms - l_ms)
+        r_gap = float("inf") if r_ms is None else abs(r_ms - target_ms)
+        if not checked or (best_idx != -1 and l_gap > best_diff and r_gap > best_diff):
+            break
+
+    return -1 if best_idx == -1 or best_diff > _MAX_MERGE_GAP_MS else best_idx
+
+
+def _to_merged_dict(moss, non, ts):
+    return {
+        "timestamp": (ts or (moss.timestamp if moss else None)
+                      or (non.timestamp if non else None)),
+        "outdoorTemp": moss.outdoor_temp if moss else None,
+        "outdoorHumidity": moss.outdoor_humidity if moss else None,
+        "mossSurfaceTemp": moss.moss_surface_temp if moss else None,
+        "nearMossTemp": moss.near_moss_temp if moss else None,
+        "nearMossHumidity": moss.near_moss_humidity if moss else None,
+        "mossWallTemp": moss.wall_temp if moss else None,
+        "nonMossSurfaceTemp": non.non_moss_surface_temp if non else None,
+        "nearNonMossTemp": non.near_non_moss_temp if non else None,
+        "nearNonMossHumidity": non.near_non_moss_humidity if non else None,
+        "nonMossWallTemp": non.wall_temp if non else None,
+    }
+
+
+def _merge_rows(moss_rows, non_moss_rows):
+    """Merge moss and non-moss ORM rows by nearest timestamp."""
+    if not moss_rows:
+        return [_to_merged_dict(None, n, n.timestamp) for n in non_moss_rows]
+    if not non_moss_rows:
+        return [_to_merged_dict(m, None, m.timestamp) for m in moss_rows]
+
+    primary_is_moss = len(moss_rows) >= len(non_moss_rows)
+    primary = moss_rows if primary_is_moss else non_moss_rows
+    secondary = non_moss_rows if primary_is_moss else moss_rows
+    used: set[int] = set()
+    merged = []
+
+    for row in primary:
+        row_ms = _ts_ms(row.timestamp)
+        idx = _find_nearest_unmatched(secondary, used, row_ms)
+        nearest = secondary[idx] if idx >= 0 else None
+        if idx >= 0:
+            used.add(idx)
+        moss = row if primary_is_moss else nearest
+        non = nearest if primary_is_moss else row
+        merged.append(_to_merged_dict(moss, non, row.timestamp))
+
+    for i, row in enumerate(secondary):
+        if i in used:
+            continue
+        moss = None if primary_is_moss else row
+        non = row if primary_is_moss else None
+        merged.append(_to_merged_dict(moss, non, row.timestamp))
+
+    merged.sort(key=lambda r: r["timestamp"] or datetime.min)
+    return merged
+
+
+def get_history_paginated(db: Session, start_date, end_date, page: int = 1, per_page: int = 30):
+    """Return ``(page_rows, total_count)`` of merged history."""
+    moss_rows, non_moss_rows = get_history(db, start_date, end_date)
+    merged = _merge_rows(moss_rows, non_moss_rows)
+    total = len(merged)
+    start_idx = (page - 1) * per_page
+    return merged[start_idx:start_idx + per_page], total
+
+
+# ── Comparison metrics ──────────────────────────────────────────────
+
 def _avg_or_none(values: list[float]) -> Optional[float]:
     if not values:
         return None

@@ -6,41 +6,41 @@ from pydantic import BaseModel, Field, model_validator
 
 class MossDataCreate(BaseModel):
     node: Literal["moss"] = "moss"
-    outdoorTemp: float
-    outdoorHumidity: float
-    mossSurfaceTemp: float
-    nearMossTemp: float
-    nearMossHumidity: float
-    wallTemp: float
+    outdoorTemp: Optional[float] = None
+    outdoorHumidity: Optional[float] = None
+    mossSurfaceTemp: Optional[float] = None
+    nearMossTemp: Optional[float] = None
+    nearMossHumidity: Optional[float] = None
+    wallTemp: Optional[float] = None
     timestamp: Optional[datetime] = None
 
 
 class NonMossDataCreate(BaseModel):
     node: Literal["non_moss"] = "non_moss"
-    nonMossSurfaceTemp: float
-    nearNonMossTemp: float
-    nearNonMossHumidity: float
-    wallTemp: float
+    nonMossSurfaceTemp: Optional[float] = None
+    nearNonMossTemp: Optional[float] = None
+    nearNonMossHumidity: Optional[float] = None
+    wallTemp: Optional[float] = None
     timestamp: Optional[datetime] = None
 
 
 class MossDataRead(BaseModel):
     id: int
-    outdoorTemp: float
-    outdoorHumidity: float
-    mossSurfaceTemp: float
-    nearMossTemp: float
-    nearMossHumidity: float
-    wallTemp: float
+    outdoorTemp: Optional[float] = None
+    outdoorHumidity: Optional[float] = None
+    mossSurfaceTemp: Optional[float] = None
+    nearMossTemp: Optional[float] = None
+    nearMossHumidity: Optional[float] = None
+    wallTemp: Optional[float] = None
     timestamp: datetime
 
 
 class NonMossDataRead(BaseModel):
     id: int
-    nonMossSurfaceTemp: float
-    nearNonMossTemp: float
-    nearNonMossHumidity: float
-    wallTemp: float
+    nonMossSurfaceTemp: Optional[float] = None
+    nearNonMossTemp: Optional[float] = None
+    nearNonMossHumidity: Optional[float] = None
+    wallTemp: Optional[float] = None
     timestamp: datetime
 
 
@@ -64,6 +64,28 @@ class HistoryQuery(BaseModel):
 class HistoryResponse(BaseModel):
     moss: list[MossDataRead]
     nonMoss: list[NonMossDataRead]
+
+
+class MergedRow(BaseModel):
+    timestamp: Optional[datetime] = None
+    outdoorTemp: Optional[float] = None
+    outdoorHumidity: Optional[float] = None
+    mossSurfaceTemp: Optional[float] = None
+    nearMossTemp: Optional[float] = None
+    nearMossHumidity: Optional[float] = None
+    mossWallTemp: Optional[float] = None
+    nonMossSurfaceTemp: Optional[float] = None
+    nearNonMossTemp: Optional[float] = None
+    nearNonMossHumidity: Optional[float] = None
+    nonMossWallTemp: Optional[float] = None
+
+
+class PaginatedHistoryResponse(BaseModel):
+    rows: list[MergedRow]
+    page: int
+    perPage: int
+    totalRows: int
+    totalPages: int
 
 
 class MetricComparison(BaseModel):

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Historical Data | IoT Monitoring</title>
+    <title>Historical Data | Urban Heat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -17,12 +17,12 @@
   <body>
     <nav class="nav">
       <div class="layout nav-inner">
-        <div class="brand">Dual ESP32 Environmental Monitor</div>
+        <div class="brand">Urban Heat</div>
         <div class="nav-links">
           <a href="index.html">Dashboard</a>
           <a href="history.html">Historical Data</a>
           <a href="compare.html">Comparison</a>
-          <button id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch to dark mode">🌙</button>
+          <a href="export.html">Export</a>
         </div>
       </div>
     </nav>
@@ -72,10 +72,24 @@
             <tbody id="historyTableBody"></tbody>
           </table>
         </div>
-        <div class="pagination" id="paginationControls" style="display: none; margin-top: 1rem; text-align: center;">
-          <button id="prevPage" type="button">← Previous</button>
-          <span id="pageInfo" style="margin: 0 1rem;"></span>
-          <button id="nextPage" type="button">Next →</button>
+        <div class="pagination" id="paginationControls" style="display: none;">
+          <div class="pagination-meta">
+            <span id="rowCount" class="row-count"></span>
+            <label class="rows-per-page-label">
+              Rows per page
+              <select id="rowsPerPage">
+                <option value="15">15</option>
+                <option value="30" selected>30</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+          </div>
+          <div class="pagination-nav">
+            <button id="prevPage" type="button" title="Previous page">‹</button>
+            <div id="pageNumbers" class="page-numbers"></div>
+            <button id="nextPage" type="button" title="Next page">›</button>
+          </div>
         </div>
       </section>
     </main>

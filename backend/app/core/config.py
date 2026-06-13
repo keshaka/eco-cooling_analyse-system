@@ -23,6 +23,18 @@ class Settings(BaseSettings):
     api_version: str = Field(default="1.0.0", alias="API_VERSION")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    # Telegram bot settings
+    telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
+    telegram_alert_chat_ids: str = Field(default="", alias="TELEGRAM_ALERT_CHAT_IDS")
+    telegram_data_timeout_minutes: int = Field(default=5, alias="TELEGRAM_DATA_TIMEOUT_MINUTES")
+
+    # Database backup directory (host path for Python file operations)
+    db_backup_dir: str = Field(default=r"C:\SQLBackups", alias="DB_BACKUP_DIR")
+    # SQL Server-side backup path (container path when using Docker)
+    db_backup_dir_sql: str = Field(default="", alias="DB_BACKUP_DIR_SQL")
+    # Daily auto-backup time in HH:MM format (24h, server local time)
+    db_backup_time: str = Field(default="02:00", alias="DB_BACKUP_TIME")
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
 
     @property

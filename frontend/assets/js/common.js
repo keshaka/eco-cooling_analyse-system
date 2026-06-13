@@ -44,32 +44,8 @@ function formatTimestamp(value) {
   });
 }
 
-function setTheme(theme) {
-  document.body.classList.toggle("dark", theme === "dark");
-  localStorage.setItem("theme", theme);
-}
-
 function initThemeToggle() {
-  const saved = localStorage.getItem("theme") || "light";
-  setTheme(saved);
-
-  const button = document.getElementById("themeToggle");
-  if (!button) return;
-
-  const updateThemeToggleIcon = (theme) => {
-    const isDark = theme === "dark";
-    button.textContent = isDark ? "☀" : "🌙";
-    button.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
-    button.setAttribute("title", isDark ? "Switch to light mode" : "Switch to dark mode");
-  };
-
-  updateThemeToggleIcon(saved);
-
-  button.addEventListener("click", () => {
-    const next = document.body.classList.contains("dark") ? "light" : "dark";
-    setTheme(next);
-    updateThemeToggleIcon(next);
-  });
+  // Dark mode only — no toggle needed
 }
 
 function highlightActiveNav() {

@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 
 from fastapi import FastAPI, Request
@@ -24,6 +25,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Pattern to match NaN / nan / Infinity / -Infinity optionally enclosed in quotes.
+_NAN_INF_RE = re.compile(r'"?(?:\bnan\b|-?\binf(?:inity)?\b)"?', re.IGNORECASE)
+
+
+@app.middleware("http")
+async def sanitize_nan_middleware(request: Request, call_next):
+    """Replace nan / Infinity literals in JSON bodies with null so the
+    standard JSON parser can handle payloads from ESP devices."""
+    if (
+        request.method in ("POST", "PUT", "PATCH")
+        and "application/json" in (request.headers.get("content-type") or "")
+    ):
+        raw_body = await request.body()
+        body_text = raw_body.decode("utf-8", errors="replace")
+        if _NAN_INF_RE.search(body_text):
+            sanitized_bytes = _NAN_INF_RE.sub("null", body_text).encode("utf-8")
+            logger.warning(
+                "Sanitized NaN/Inf in request body for %s: %s -> %s",
+                request.url.path,
+                body_text[:200],
+                sanitized_bytes.decode()[:200],
+            )
+
+            async def receive():
+                return {"type": "http.request", "body": sanitized_bytes}
+
+            request._receive = receive
+            # Clear the cached body so Starlette re-reads via our patched _receive
+            request._body = sanitized_bytes
+
+    return await call_next(request)
 
 
 @app.middleware("http")

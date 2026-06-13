@@ -7,23 +7,21 @@
 #include <DallasTemperature.h>
 
 // ---------------- WIFI ----------------
-const char* ssid = "Keshaka";
+const char* ssid = "Parami";
 const char* password = "";
 
 // ---------------- SERVER ----------------
-const char* serverUrl = "";
+const char* serverUrl = "http://parami.reviewmate.live:8000/api/data/non-moss";
 
 // ---------------- PINS ----------------
 #define DHT_PIN 4
 #define DHT_TYPE DHT22
-#define ONE_WIRE_BUS 14  // DS18B20
+#define ONE_WIRE_BUS 14
 
 // ---------------- OBJECTS ----------------
 DHT dht(DHT_PIN, DHT_TYPE);
-
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature ds18b20(&oneWire);
-
 Adafruit_MLX90614 mlx = Adafruit_MLX90614();
 
 // ---------------- SETUP ----------------
@@ -33,32 +31,37 @@ void setup() {
   dht.begin();
   ds18b20.begin();
 
-  Wire.begin(21, 22); // SDA, SCL
+  Wire.begin(21, 22);
   mlx.begin();
 
-  // Connect WiFi
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi");
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("\nWiFi connected!");
+  // 🔴 Keep WiFi OFF initially
+  WiFi.mode(WIFI_OFF);
 }
 
 // ---------------- LOOP ----------------
 void loop() {
 
-  // -------- READ SENSORS --------
-  float airTemp = dht.readTemperature();
-  float airHumidity = dht.readHumidity();
+  float airTemp = NAN;
+  float airHumidity = NAN;
+  float wallTemp = NAN;
+  float surfaceTemp = NAN;
 
+  // -------- READ DHT (ONLY THIS SENSOR ACTIVE) --------
+  Serial.println("Reading DHT...");
+  delay(2000); // stabilize
+  airTemp = dht.readTemperature();
+  airHumidity = dht.readHumidity();
+
+  // -------- READ DS18B20 --------
+  Serial.println("Reading DS18B20...");
   ds18b20.requestTemperatures();
-  float wallTemp = ds18b20.getTempCByIndex(0);
+  delay(750); // conversion time
+  wallTemp = ds18b20.getTempCByIndex(0);
 
-  float surfaceTemp = mlx.readObjectTempC();
+  // -------- READ MLX90614 --------
+  Serial.println("Reading MLX90614...");
+  delay(500);
+  surfaceTemp = mlx.readObjectTempC();
 
   // -------- VALIDATION --------
   if (isnan(airTemp) || isnan(airHumidity) || wallTemp == -127) {
@@ -77,11 +80,24 @@ void loop() {
   jsonData += "\"timestamp\":\"" + getISOTime() + "\"";
   jsonData += "}";
 
-  Serial.println("Sending Data:");
+  Serial.println("Prepared Data:");
   Serial.println(jsonData);
 
-  // -------- SEND DATA --------
+  // -------- CONNECT WIFI ONLY NOW --------
+  Serial.println("Connecting WiFi...");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  int retries = 0;
+  while (WiFi.status() != WL_CONNECTED && retries < 20) {
+    delay(500);
+    Serial.print(".");
+    retries++;
+  }
+
   if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi Connected!");
+
     HTTPClient http;
     http.begin(serverUrl);
     http.addHeader("Content-Type", "application/json");
@@ -92,12 +108,18 @@ void loop() {
     Serial.println(httpResponseCode);
 
     http.end();
+
+    // 🔴 DISCONNECT WIFI AFTER SENDING
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    Serial.println("WiFi OFF");
   } else {
-    Serial.println("WiFi Disconnected!");
+    Serial.println("\nWiFi Failed!");
   }
 
-  // -------- DELAY 1 MIN --------
-  delay(3*60000);
+  // -------- SLEEP / DELAY --------
+  Serial.println("Cycle complete. Sleeping...");
+  delay(60000); // 1 min (can replace with deep sleep)
 }
 
 // ---------------- TIME FUNCTION ----------------

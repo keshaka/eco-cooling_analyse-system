@@ -1,22 +1,64 @@
-let latestMergedRows = [];
 let currentPage = 1;
-const ROWS_PER_PAGE = 30;
-const MAX_MERGE_GAP_MS = 2 * 60 * 1000;
+let totalRows = 0;
+let totalPages = 1;
+let rowsPerPage = 30;
+let allMergedRowsForExport = null; // lazily fetched for CSV export
 
-function sortRowsByTimestamp(rows) {
-  return [...rows].sort((left, right) => new Date(left.timestamp) - new Date(right.timestamp));
+function getRowsPerPage() {
+  const select = document.getElementById("rowsPerPage");
+  return select ? parseInt(select.value, 10) : 30;
 }
 
-function renderTable(pageNumber = 1) {
+function buildPageNumbers(current, total) {
+  const container = document.getElementById("pageNumbers");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const pages = [];
+  const WINDOW = 2;
+
+  for (let i = 1; i <= total; i++) {
+    if (
+      i === 1 ||
+      i === total ||
+      (i >= current - WINDOW && i <= current + WINDOW)
+    ) {
+      pages.push(i);
+    }
+  }
+
+  const withGaps = [];
+  let prev = 0;
+  pages.forEach((p) => {
+    if (prev && p - prev > 1) {
+      withGaps.push("...");
+    }
+    withGaps.push(p);
+    prev = p;
+  });
+
+  withGaps.forEach((item) => {
+    if (item === "...") {
+      const el = document.createElement("span");
+      el.className = "page-ellipsis";
+      el.textContent = "\u2026";
+      container.appendChild(el);
+    } else {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = item;
+      btn.className = "page-btn" + (item === current ? " active" : "");
+      btn.addEventListener("click", () => loadPage(item));
+      container.appendChild(btn);
+    }
+  });
+}
+
+function renderRows(rows) {
   const body = document.getElementById("historyTableBody");
   body.innerHTML = "";
 
-  const totalPages = Math.ceil(latestMergedRows.length / ROWS_PER_PAGE);
-  const startIdx = (pageNumber - 1) * ROWS_PER_PAGE;
-  const endIdx = startIdx + ROWS_PER_PAGE;
-  const pageRows = latestMergedRows.slice(startIdx, endIdx);
-
-  pageRows.forEach((row) => {
+  rows.forEach((row) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${formatTimestamp(row.timestamp)}</td>
@@ -33,24 +75,63 @@ function renderTable(pageNumber = 1) {
     `;
     body.appendChild(tr);
   });
-
-  // Update pagination controls
-  const paginationControls = document.getElementById("paginationControls");
-  if (totalPages > 1) {
-    paginationControls.style.display = "flex";
-    paginationControls.style.justifyContent = "center";
-    paginationControls.style.alignItems = "center";
-    document.getElementById("pageInfo").textContent = `Page ${pageNumber} of ${totalPages}`;
-    document.getElementById("prevPage").disabled = pageNumber === 1;
-    document.getElementById("nextPage").disabled = pageNumber === totalPages;
-  } else {
-    paginationControls.style.display = "none";
-  }
-
-  currentPage = pageNumber;
 }
 
-async function loadHistoryRange() {
+function updatePaginationUI(page, total, rowCount) {
+  const controls = document.getElementById("paginationControls");
+  if (rowCount > 0) {
+    controls.style.display = "";
+
+    const startIdx = (page - 1) * rowsPerPage + 1;
+    const endIdx = Math.min(page * rowsPerPage, rowCount);
+    const rowCountEl = document.getElementById("rowCount");
+    if (rowCountEl) {
+      rowCountEl.textContent = `Showing ${startIdx}\u2013${endIdx} of ${rowCount} rows`;
+    }
+
+    document.getElementById("prevPage").disabled = page === 1;
+    document.getElementById("nextPage").disabled = page === total;
+    buildPageNumbers(page, total);
+  } else {
+    controls.style.display = "none";
+  }
+}
+
+async function loadPage(page) {
+  const start = document.getElementById("startDate").value;
+  const end = document.getElementById("endDate").value;
+
+  if (!start || !end) {
+    alert("Please select start and end dates.");
+    return;
+  }
+
+  rowsPerPage = getRowsPerPage();
+
+  try {
+    const url = `/api/data/history/paginated?start=${start}&end=${end}&page=${page}&per_page=${rowsPerPage}`;
+    const payload = await apiGet(url);
+
+    currentPage = payload.page;
+    totalRows = payload.totalRows;
+    totalPages = payload.totalPages;
+
+    renderRows(payload.rows);
+    updatePaginationUI(currentPage, totalPages, totalRows);
+
+    // Invalidate cached export data when the date range might have changed
+    allMergedRowsForExport = null;
+  } catch (error) {
+    console.error(error);
+    alert("Failed to load historical data.");
+  }
+}
+
+function loadHistoryRange() {
+  return loadPage(1);
+}
+
+async function exportAllAsCsv() {
   const start = document.getElementById("startDate").value;
   const end = document.getElementById("endDate").value;
 
@@ -60,183 +141,14 @@ async function loadHistoryRange() {
   }
 
   try {
-    const payload = await apiGet(`/api/data/history?start=${start}&end=${end}`);
-    const moss = sortRowsByTimestamp(payload.moss || []);
-    const nonMoss = sortRowsByTimestamp(payload.nonMoss || []);
-
-    latestMergedRows = mergeByNearestTimestamp(moss, nonMoss);
-    renderTable(1);
-  } catch (error) {
-    console.error(error);
-    alert("Failed to load historical data.");
-  }
-}
-
-function parseTimestampMs(value) {
-  const ms = new Date(value).getTime();
-  return Number.isNaN(ms) ? null : ms;
-}
-
-function lowerBoundByTime(rows, targetMs) {
-  let left = 0;
-  let right = rows.length;
-
-  while (left < right) {
-    const mid = Math.floor((left + right) / 2);
-    const midMs = parseTimestampMs(rows[mid]?.timestamp);
-
-    if (midMs === null || midMs < targetMs) {
-      left = mid + 1;
-    } else {
-      right = mid;
-    }
-  }
-
-  return left;
-}
-
-function findNearestUnmatchedIndex(rows, usedIndexes, targetMs) {
-  if (!rows.length || targetMs === null) return -1;
-
-  const pivot = lowerBoundByTime(rows, targetMs);
-  let left = pivot - 1;
-  let right = pivot;
-  let bestIndex = -1;
-  let bestDiff = Number.POSITIVE_INFINITY;
-
-  while (left >= 0 || right < rows.length) {
-    let checked = false;
-
-    if (left >= 0) {
-      checked = true;
-      if (!usedIndexes.has(left)) {
-        const leftMs = parseTimestampMs(rows[left]?.timestamp);
-        if (leftMs !== null) {
-          const diff = Math.abs(leftMs - targetMs);
-          if (diff < bestDiff) {
-            bestDiff = diff;
-            bestIndex = left;
-          }
-        }
-      }
-      left -= 1;
+    // Fetch all pages for export (use the old non-paginated endpoint for full data)
+    if (!allMergedRowsForExport) {
+      const payload = await apiGet(`/api/data/history/paginated?start=${start}&end=${end}&page=1&per_page=${totalRows || 999999}`);
+      allMergedRowsForExport = payload.rows;
     }
 
-    if (right < rows.length) {
-      checked = true;
-      if (!usedIndexes.has(right)) {
-        const rightMs = parseTimestampMs(rows[right]?.timestamp);
-        if (rightMs !== null) {
-          const diff = Math.abs(rightMs - targetMs);
-          if (diff < bestDiff) {
-            bestDiff = diff;
-            bestIndex = right;
-          }
-        }
-      }
-      right += 1;
-    }
-
-    // Once both directions moved beyond the best known distance, stop searching.
-    const leftMs = left >= 0 ? parseTimestampMs(rows[left]?.timestamp) : null;
-    const rightMs = right < rows.length ? parseTimestampMs(rows[right]?.timestamp) : null;
-    const leftGap = leftMs === null ? Number.POSITIVE_INFINITY : Math.abs(targetMs - leftMs);
-    const rightGap = rightMs === null ? Number.POSITIVE_INFINITY : Math.abs(rightMs - targetMs);
-
-    if (!checked || (bestIndex !== -1 && leftGap > bestDiff && rightGap > bestDiff)) {
-      break;
-    }
-  }
-
-  if (bestIndex === -1 || bestDiff > MAX_MERGE_GAP_MS) {
-    return -1;
-  }
-
-  return bestIndex;
-}
-
-function toMergedRow(moss, non, timestamp) {
-  return {
-    timestamp: timestamp || moss?.timestamp || non?.timestamp || "",
-    outdoorTemp: moss?.outdoorTemp,
-    outdoorHumidity: moss?.outdoorHumidity,
-    mossSurfaceTemp: moss?.mossSurfaceTemp,
-    nonMossSurfaceTemp: non?.nonMossSurfaceTemp,
-    nearMossTemp: moss?.nearMossTemp,
-    nearNonMossTemp: non?.nearNonMossTemp,
-    nearMossHumidity: moss?.nearMossHumidity,
-    nearNonMossHumidity: non?.nearNonMossHumidity,
-    mossWallTemp: moss?.wallTemp,
-    nonMossWallTemp: non?.wallTemp,
-  };
-}
-
-function mergeByNearestTimestamp(mossRows, nonMossRows) {
-  if (!mossRows.length) {
-    return nonMossRows.map((non) => toMergedRow(null, non, non.timestamp));
-  }
-  if (!nonMossRows.length) {
-    return mossRows.map((moss) => toMergedRow(moss, null, moss.timestamp));
-  }
-
-  const primaryIsMoss = mossRows.length >= nonMossRows.length;
-  const primary = primaryIsMoss ? mossRows : nonMossRows;
-  const secondary = primaryIsMoss ? nonMossRows : mossRows;
-  const usedSecondary = new Set();
-  const merged = [];
-
-  primary.forEach((row) => {
-    const rowMs = parseTimestampMs(row.timestamp);
-    const nearestIndex = findNearestUnmatchedIndex(secondary, usedSecondary, rowMs);
-    const nearest = nearestIndex >= 0 ? secondary[nearestIndex] : null;
-
-    if (nearestIndex >= 0) {
-      usedSecondary.add(nearestIndex);
-    }
-
-    const moss = primaryIsMoss ? row : nearest;
-    const non = primaryIsMoss ? nearest : row;
-    merged.push(toMergedRow(moss, non, row.timestamp));
-  });
-
-  secondary.forEach((row, index) => {
-    if (usedSecondary.has(index)) return;
-    const moss = primaryIsMoss ? null : row;
-    const non = primaryIsMoss ? row : null;
-    merged.push(toMergedRow(moss, non, row.timestamp));
-  });
-
-  return sortRowsByTimestamp(merged);
-}
-
-function initDefaultDates() {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(end.getDate() - 2);
-
-  document.getElementById("startDate").value = start.toISOString().slice(0, 10);
-  document.getElementById("endDate").value = end.toISOString().slice(0, 10);
-}
-
-function bindEvents() {
-  document.getElementById("loadHistory").addEventListener("click", loadHistoryRange);
-  
-  document.getElementById("prevPage").addEventListener("click", () => {
-    if (currentPage > 1) {
-      renderTable(currentPage - 1);
-    }
-  });
-  
-  document.getElementById("nextPage").addEventListener("click", () => {
-    const totalPages = Math.ceil(latestMergedRows.length / ROWS_PER_PAGE);
-    if (currentPage < totalPages) {
-      renderTable(currentPage + 1);
-    }
-  });
-
-  document.getElementById("exportCsv").addEventListener("click", () => {
-    if (!latestMergedRows.length) {
-      alert("No data available. Load a date range first.");
+    if (!allMergedRowsForExport.length) {
+      alert("No data available.");
       return;
     }
 
@@ -254,7 +166,7 @@ function bindEvents() {
       "non_moss_wall_temp",
     ];
 
-    const rows = latestMergedRows.map((row) => [
+    const rows = allMergedRowsForExport.map((row) => [
       row.timestamp,
       row.outdoorTemp,
       row.outdoorHumidity,
@@ -269,7 +181,41 @@ function bindEvents() {
     ]);
 
     downloadCsv(`environment_history_${Date.now()}.csv`, [header, ...rows]);
+  } catch (error) {
+    console.error(error);
+    alert("Failed to export data.");
+  }
+}
+
+function initDefaultDates() {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 2);
+
+  document.getElementById("startDate").value = start.toISOString().slice(0, 10);
+  document.getElementById("endDate").value = end.toISOString().slice(0, 10);
+}
+
+function bindEvents() {
+  document.getElementById("loadHistory").addEventListener("click", loadHistoryRange);
+
+  document.getElementById("prevPage").addEventListener("click", () => {
+    if (currentPage > 1) {
+      loadPage(currentPage - 1);
+    }
   });
+
+  document.getElementById("nextPage").addEventListener("click", () => {
+    if (currentPage < totalPages) {
+      loadPage(currentPage + 1);
+    }
+  });
+
+  document.getElementById("rowsPerPage").addEventListener("change", () => {
+    loadPage(1);
+  });
+
+  document.getElementById("exportCsv").addEventListener("click", exportAllAsCsv);
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

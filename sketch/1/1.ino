@@ -7,17 +7,17 @@
 #include <DallasTemperature.h>
 
 // ---------------- WIFI ----------------
-const char* ssid = "Keshaka";
+const char* ssid = "Parami";
 const char* password = "";
 
 // ---------------- SERVER ----------------
-const char* serverUrl = "";
+const char* serverUrl = "http://parami.reviewmate.live:8000/api/data/moss";
 
 // ---------------- PINS ----------------
 #define DHT_OUTDOOR_PIN 14
-#define DHT_MOSS_PIN 27
+#define DHT_MOSS_PIN 18
 #define DHT_TYPE DHT22
-#define ONE_WIRE_BUS 18
+#define ONE_WIRE_BUS 27
 
 // ---------------- OBJECTS ----------------
 DHT dhtOutdoor(DHT_OUTDOOR_PIN, DHT_TYPE);
@@ -39,42 +39,44 @@ void setup() {
   Wire.begin(21, 22);
   mlx.begin();
 
-  // Connect WiFi
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi");
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("\nWiFi connected!");
+  // 🔴 Start with WiFi OFF
+  WiFi.mode(WIFI_OFF);
 }
 
 // ---------------- LOOP ----------------
 void loop() {
 
-  // -------- READ SENSORS --------
-  float outdoorTemp = dhtOutdoor.readTemperature();
-  float outdoorHumidity = dhtOutdoor.readHumidity();
+  float outdoorTemp = NAN;
+  float outdoorHumidity = NAN;
+  float mossTemp = NAN;
+  float mossHumidity = NAN;
+  float wallTemp = NAN;
+  float mossSurfaceTemp = NAN;
 
-  float mossTemp = dhtMoss.readTemperature();
-  float mossHumidity = dhtMoss.readHumidity();
+  // -------- READ OUTDOOR DHT --------
+  Serial.println("Reading Outdoor DHT...");
+  delay(2000); // stabilize
+  outdoorTemp = dhtOutdoor.readTemperature();
+  outdoorHumidity = dhtOutdoor.readHumidity();
 
+  // -------- READ MOSS DHT --------
+  Serial.println("Reading Moss DHT...");
+  delay(2000); // stabilize (important for second DHT)
+  mossTemp = dhtMoss.readTemperature();
+  mossHumidity = dhtMoss.readHumidity();
+
+  // -------- READ DS18B20 --------
+  Serial.println("Reading DS18B20...");
   ds18b20.requestTemperatures();
-  float wallTemp = ds18b20.getTempCByIndex(0);
+  delay(750);
+  wallTemp = ds18b20.getTempCByIndex(0);
 
-  float mossSurfaceTemp = mlx.readObjectTempC();
+  // -------- READ MLX90614 --------
+  Serial.println("Reading MLX90614...");
+  delay(500);
+  mossSurfaceTemp = mlx.readObjectTempC();
 
-  // -------- VALIDATION --------
-  if (isnan(outdoorTemp) || isnan(outdoorHumidity) ||
-      isnan(mossTemp) || isnan(mossHumidity) ||
-      wallTemp == -127) {
 
-    Serial.println("Sensor error! Skipping...");
-    delay(5000);
-    return;
-  }
 
   // -------- CREATE JSON --------
   String jsonData = "{";
@@ -88,11 +90,24 @@ void loop() {
   jsonData += "\"timestamp\":\"" + getISOTime() + "\"";
   jsonData += "}";
 
-  Serial.println("Sending Data:");
+  Serial.println("Prepared Data:");
   Serial.println(jsonData);
 
-  // -------- SEND DATA --------
+  // -------- CONNECT WIFI ONLY AFTER ALL READINGS --------
+  Serial.println("Connecting WiFi...");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  int retries = 0;
+  while (WiFi.status() != WL_CONNECTED && retries < 20) {
+    delay(500);
+    Serial.print(".");
+    retries++;
+  }
+
   if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi Connected!");
+
     HTTPClient http;
     http.begin(serverUrl);
     http.addHeader("Content-Type", "application/json");
@@ -103,16 +118,21 @@ void loop() {
     Serial.println(httpResponseCode);
 
     http.end();
+
+    // 🔴 TURN OFF WIFI AFTER SEND
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    Serial.println("WiFi OFF");
   } else {
-    Serial.println("WiFi Disconnected!");
+    Serial.println("\nWiFi Failed!");
   }
 
-  // -------- DELAY 1 MIN --------
-  delay(3*60000);
+  // -------- SLEEP / DELAY --------
+  Serial.println("Cycle complete. Sleeping...");
+  delay(60000); // replace with deep sleep if needed
 }
 
 // ---------------- TIME FUNCTION ----------------
 String getISOTime() {
-  // Simple placeholder time (you can upgrade to NTP later)
   return "2026-04-09T00:00:00Z";
 }

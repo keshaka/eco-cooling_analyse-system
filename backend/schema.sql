@@ -11,12 +11,12 @@ IF OBJECT_ID(N'dbo.moss_data', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.moss_data (
         id INT IDENTITY(1,1) PRIMARY KEY,
-        outdoor_temp FLOAT NOT NULL,
-        outdoor_humidity FLOAT NOT NULL,
-        moss_surface_temp FLOAT NOT NULL,
-        near_moss_temp FLOAT NOT NULL,
-        near_moss_humidity FLOAT NOT NULL,
-        wall_temp FLOAT NOT NULL,
+        outdoor_temp FLOAT NULL,
+        outdoor_humidity FLOAT NULL,
+        moss_surface_temp FLOAT NULL,
+        near_moss_temp FLOAT NULL,
+        near_moss_humidity FLOAT NULL,
+        wall_temp FLOAT NULL,
         [timestamp] DATETIME NOT NULL
     );
 END;
@@ -26,10 +26,10 @@ IF OBJECT_ID(N'dbo.non_moss_data', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.non_moss_data (
         id INT IDENTITY(1,1) PRIMARY KEY,
-        non_moss_surface_temp FLOAT NOT NULL,
-        near_non_moss_temp FLOAT NOT NULL,
-        near_non_moss_humidity FLOAT NOT NULL,
-        wall_temp FLOAT NOT NULL,
+        non_moss_surface_temp FLOAT NULL,
+        near_non_moss_temp FLOAT NULL,
+        near_non_moss_humidity FLOAT NULL,
+        wall_temp FLOAT NULL,
         [timestamp] DATETIME NOT NULL
     );
 END;

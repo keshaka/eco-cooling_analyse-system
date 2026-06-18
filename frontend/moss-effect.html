@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Analyse the effect of different moss coverage percentages on cooling performance. Compare temperature reduction, humidity buffering, and diurnal patterns across moss scenarios." />
+    <title>Moss Effect Analysis | Urban Heat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="assets/js/common.js" defer></script>
+    <script src="assets/js/moss-effect.js" defer></script>
+  </head>
+  <body>
+    <nav class="nav">
+      <div class="layout nav-inner">
+        <div class="brand">Urban Heat</div>
+        <div class="nav-links">
+          <a href="index.html">Dashboard</a>
+          <a href="history.html">Historical Data</a>
+          <a href="compare.html">Comparison</a>
+          <a href="analysis.html">Analysis</a>
+          <a href="moss-effect.html">Moss Effect</a>
+          <a href="export.html">Export</a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="layout">
+      <section class="hero fade-in">
+        <div>
+          <h1>Moss Effect Analysis</h1>
+          <p>Compare the cooling effect of different moss coverage percentages. Add scenarios with date ranges, filter by humidity, and visualise the impact.</p>
+        </div>
+      </section>
+
+      <!-- ── Configuration Panel ── -->
+      <section class="section panel panel-filter fade-in" id="configPanel">
+        <div class="panel-header">
+          <div>
+            <h2>🌿 Scenario Builder</h2>
+            <p class="muted">Define moss coverage percentages with their date ranges. Each entry fetches sensor data for that period.</p>
+          </div>
+        </div>
+
+        <!-- Global Humidity Filter -->
+        <div class="me-humidity-filter">
+          <h3 class="me-filter-title">Humidity Range Filter</h3>
+          <p class="muted" style="margin:0 0 0.5rem; font-size:0.82rem;">Records outside this humidity range will be excluded from all analyses (applies to outdoor, near-moss, and near-non-moss humidity).</p>
+          <div class="filters">
+            <label>
+              Min Humidity (%)
+              <input type="number" id="meMinHumidity" min="0" max="100" step="1" value="0" />
+            </label>
+            <label>
+              Max Humidity (%)
+              <input type="number" id="meMaxHumidity" min="0" max="100" step="1" value="98" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Moss Entries -->
+        <div class="me-entries-section">
+          <h3 class="me-filter-title">Moss Percentage Entries</h3>
+          <div id="mossEntriesList" class="me-entries-list">
+            <!-- Dynamically populated -->
+          </div>
+          <div class="me-entries-actions">
+            <button type="button" id="addEntryBtn" class="me-btn-add">+ Add Entry</button>
+            <button type="button" id="generateBtn" class="btn-accent me-btn-generate">🔬 Generate Analysis</button>
+          </div>
+        </div>
+
+        <div class="filter-status" id="meStatus"></div>
+      </section>
+
+      <!-- Loading indicator -->
+      <div id="meLoading" class="export-loading" style="display: none;">
+        <div class="spinner"></div>
+        <span>Fetching and analysing data…</span>
+      </div>
+
+      <!-- ── Results Container (hidden until generated) ── -->
+      <div id="meResults" style="display: none;">
+
+        <!-- 1. Temperature Comparison -->
+        <section class="section panel fade-in" id="meTempSection">
+          <div class="panel-header">
+            <div>
+              <h2><span class="section-num">1</span> Temperature Comparison</h2>
+              <p class="muted">Average wall and outdoor temperatures for each moss percentage scenario.</p>
+            </div>
+            <button type="button" class="btn-export-single me-dl-btn" data-chart="meTempChart" data-name="moss_effect_temperature">⬇ PNG</button>
+          </div>
+          <div class="chart-wrap"><canvas id="meTempChart"></canvas></div>
+        </section>
+
+        <!-- 2. Cooling Effect Comparison -->
+        <section class="section panel fade-in" id="meCoolingSection">
+          <div class="panel-header">
+            <div>
+              <h2><span class="section-num">2</span> Cooling Effect</h2>
+              <p class="muted">Outdoor-minus-wall temperature (positive = cooler wall) per scenario.</p>
+            </div>
+            <button type="button" class="btn-export-single me-dl-btn" data-chart="meCoolingChart" data-name="moss_effect_cooling">⬇ PNG</button>
+          </div>
+          <div class="chart-wrap"><canvas id="meCoolingChart"></canvas></div>
+        </section>
+
+        <!-- 3. Moss Advantage vs Percentage -->
+        <section class="section panel fade-in" id="meAdvantageSection">
+          <div class="panel-header">
+            <div>
+              <h2><span class="section-num">3</span> Moss Advantage vs Coverage</h2>
+              <p class="muted">How much cooler the moss wall is compared to non-moss, plotted against moss coverage percentage.</p>
+            </div>
+            <button type="button" class="btn-export-single me-dl-btn" data-chart="meAdvantageChart" data-name="moss_advantage_vs_coverage">⬇ PNG</button>
+          </div>
+          <div class="chart-wrap"><canvas id="meAdvantageChart"></canvas></div>
+        </section>
+
+        <!-- 4. Humidity Buffering -->
+        <section class="section panel fade-in" id="meHumiditySection">
+          <div class="panel-header">
+            <div>
+              <h2><span class="section-num">4</span> Humidity Buffering</h2>
+              <p class="muted">Standard deviation of humidity — lower indicates a more stable microclimate.</p>
+            </div>
+            <button type="button" class="btn-export-single me-dl-btn" data-chart="meHumidityChart" data-name="moss_effect_humidity_buffering">⬇ PNG</button>
+          </div>
+          <div class="chart-wrap"><canvas id="meHumidityChart"></canvas></div>
+        </section>
+
+        <!-- 5. Diurnal Patterns -->
+        <section class="section panel fade-in" id="meDiurnalSection">
+          <div class="panel-header">
+            <div>
+              <h2><span class="section-num">5</span> Diurnal Patterns</h2>
+              <p class="muted">Daytime vs night-time temperature differences per scenario.</p>
+            </div>
+            <button type="button" class="btn-export-single me-dl-btn" data-chart="meDiurnalChart" data-name="moss_effect_diurnal">⬇ PNG</button>
+          </div>
+          <div class="chart-wrap"><canvas id="meDiurnalChart"></canvas></div>
+        </section>
+
+        <!-- 6. Summary Table -->
+        <section class="section panel fade-in" id="meSummarySection">
+          <div class="panel-header">
+            <div>
+              <h2><span class="section-num">6</span> Summary Table</h2>
+              <p class="muted">Key metrics for every moss percentage scenario at a glance.</p>
+            </div>
+            <button type="button" id="meExportAllBtn" class="btn-accent" style="white-space:nowrap;">⬇ Export All Charts</button>
+          </div>
+          <div class="table-wrap">
+            <table id="meSummaryTable">
+              <thead>
+                <tr>
+                  <th>Moss %</th>
+                  <th>Date Range</th>
+                  <th>Moss Wall (°C)</th>
+                  <th>Non-Moss Wall (°C)</th>
+                  <th>Outdoor (°C)</th>
+                  <th>Moss Cooling (°C)</th>
+                  <th>Non-Moss Cooling (°C)</th>
+                  <th>Advantage (°C)</th>
+                  <th>Data Points</th>
+                </tr>
+              </thead>
+              <tbody id="meSummaryBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+      </div><!-- /meResults -->
+
+      <p class="footer-note">Urban Heat — Comparative Environmental Monitoring of Moss-Based Cooling</p>
+    </main>
+  </body>
+</html>

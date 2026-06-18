@@ -36,3 +36,5 @@ htmlcov/
 # OS files
 .DS_Store
 Thumbs.db
+
+moss_wall_report.pdf

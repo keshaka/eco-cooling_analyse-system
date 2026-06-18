@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Statistical analysis report of moss-based cooling system performance including descriptive statistics, t-tests, cooling effects, and diurnal patterns." />
+    <title>Analysis Report | Urban Heat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@sgratzl/chartjs-chart-boxplot"></script>
+    <script src="assets/js/common.js" defer></script>
+    <script src="assets/js/analysis.js" defer></script>
+  </head>
+  <body>
+    <nav class="nav">
+      <div class="layout nav-inner">
+        <div class="brand">Urban Heat</div>
+        <div class="nav-links">
+          <a href="index.html">Dashboard</a>
+          <a href="history.html">Historical Data</a>
+          <a href="compare.html">Comparison</a>
+          <a href="analysis.html">Analysis</a>
+          <a href="moss-effect.html">Moss Effect</a>
+          <a href="export.html">Export</a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="layout">
+      <section class="hero fade-in">
+        <div>
+          <h1>Analysis Report</h1>
+          <p>Statistical analysis of moss-based eco-cooling system performance — descriptive stats, t-tests, cooling effects, diurnal patterns &amp; more.</p>
+        </div>
+        <div class="muted" style="font-size:0.82rem;">Source: environment_history CSV</div>
+      </section>
+
+      <!-- ── Filter Controls ── -->
+      <section class="section panel panel-filter fade-in" id="filterPanel">
+        <div class="panel-header">
+          <div>
+            <h2>🔍 Filters</h2>
+            <p class="muted">Narrow the analysis by date range and humidity range. Humidity filter applies to all humidity sensors (outdoor, near-moss, near-non-moss).</p>
+          </div>
+        </div>
+        <div class="filters" id="analysisFilters">
+          <label>
+            Start Date
+            <input type="date" id="analysisStartDate" />
+          </label>
+          <label>
+            End Date
+            <input type="date" id="analysisEndDate" />
+          </label>
+          <label>
+            Min Humidity (%)
+            <input type="number" id="minHumidity" min="0" max="100" step="1" placeholder="0" />
+          </label>
+          <label>
+            Max Humidity (%)
+            <input type="number" id="maxHumidity" min="0" max="100" step="1" placeholder="100" />
+          </label>
+          <button id="applyAnalysisFilters" type="button" class="btn-accent">Apply Filters</button>
+          <button id="resetAnalysisFilters" type="button">Reset</button>
+        </div>
+        <div class="filter-status" id="filterStatus"></div>
+      </section>
+
+      <!-- Loading indicator -->
+      <div id="loadingIndicator" class="export-loading" style="display: none;">
+        <div class="spinner"></div>
+        <span>Loading analysis data…</span>
+      </div>
+
+      <!-- ── 1. Descriptive Statistics ── -->
+      <section class="section panel fade-in" id="descriptiveStats">
+        <div class="panel-header">
+          <div>
+            <h2><span class="section-num">1</span> Descriptive Statistics</h2>
+            <p class="muted">Summary statistics across all sensor channels (computed from raw per-minute data).</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="descriptiveTable">
+            <thead>
+              <tr>
+                <th>Sensor</th>
+                <th>Mean</th>
+                <th>Std Dev</th>
+                <th>Min</th>
+                <th>Max</th>
+              </tr>
+            </thead>
+            <tbody id="descriptiveBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── 2. Time Series Analysis ── -->
+      <section class="section panel fade-in" id="timeSeriesSection">
+        <div class="panel-header">
+          <div>
+            <h2><span class="section-num">2</span> Time Series Analysis</h2>
+            <p class="muted">Hourly-averaged plots showing diurnal cycling and sensor behaviour over time.</p>
+          </div>
+          <button type="button" id="exportAllAnalysisCharts" class="btn-accent" style="white-space:nowrap;">⬇ Export All Charts</button>
+        </div>
+        <div class="analysis-note note-warning">
+          <strong>⚠ Data Quality Note:</strong> The Moss Wall Temp plot shows repeated extreme negative spikes (down to roughly −50 to −130°C) on at least three occasions — not a real thermal signal. These are likely sensor dropouts or wiring faults.
+        </div>
+        <div class="grid charts sensor-charts">
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Temperature Overview</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="timeSeriesTempChart" data-name="analysis_temperature_overview">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="timeSeriesTempChart"></canvas></div>
+          </article>
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Humidity Overview</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="timeSeriesHumidityChart" data-name="analysis_humidity_overview">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="timeSeriesHumidityChart"></canvas></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── 3. Moss vs Non-Moss Comparison ── -->
+      <section class="section panel fade-in" id="tTestSection">
+        <div class="panel-header">
+          <div>
+            <h2><span class="section-num">3</span> Moss vs Non-Moss Comparison (t-tests)</h2>
+            <p class="muted">Independent two-sample t-test results confirming statistically significant differences.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="tTestTable">
+            <thead>
+              <tr>
+                <th>Comparison</th>
+                <th>Moss Mean</th>
+                <th>Non-Moss Mean</th>
+                <th>t-stat</th>
+                <th>p-value</th>
+                <th>Significance</th>
+              </tr>
+            </thead>
+            <tbody id="tTestBody"></tbody>
+          </table>
+        </div>
+        <div class="grid charts sensor-charts" style="margin-top:1rem; grid-template-columns: repeat(3, 1fr);">
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Wall Temp Box Plot</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="boxplotWallTemp" data-name="analysis_boxplot_wall_temp">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="boxplotWallTemp"></canvas></div>
+          </article>
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Surface Temp Box Plot</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="boxplotSurfaceTemp" data-name="analysis_boxplot_surface_temp">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="boxplotSurfaceTemp"></canvas></div>
+          </article>
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Humidity Box Plot</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="boxplotHumidity" data-name="analysis_boxplot_humidity">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="boxplotHumidity"></canvas></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── 4. Cooling Effect ── -->
+      <section class="section panel fade-in" id="coolingSection">
+        <div class="panel-header">
+          <div>
+            <h2><span class="section-num">4</span> Cooling Effect</h2>
+            <p class="muted">Outdoor temp minus wall temp — positive values mean the wall is cooler than outdoors.</p>
+          </div>
+        </div>
+        <div class="cooling-metrics" id="coolingCards">
+          <!-- Populated by JS -->
+        </div>
+        <div class="analysis-note note-warning" style="margin-top:1rem;">
+          <strong>⚠ Artifact Alert:</strong> The histogram shows a cluster of moss cooling values around 150–160°C, consistent with −127°C floor readings producing artificial "cooling" values (outdoor ~30°C minus wall ~−127°C ≈ 157°C).
+        </div>
+        <div class="grid charts sensor-charts" style="margin-top:1rem;">
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Distribution of Cooling Effect</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="coolingHistogramChart" data-name="analysis_cooling_histogram">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="coolingHistogramChart"></canvas></div>
+          </article>
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Moss Cooling Advantage Over Time</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="coolingAdvantageChart" data-name="analysis_cooling_advantage">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="coolingAdvantageChart"></canvas></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── 5. Diurnal Patterns ── -->
+      <section class="section panel fade-in" id="diurnalSection">
+        <div class="panel-header">
+          <div>
+            <h2><span class="section-num">5</span> Diurnal Patterns</h2>
+            <p class="muted">Daytime (06:00–18:00) vs night-time (18:00–06:00) temperature differences.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="diurnalTable">
+            <thead>
+              <tr>
+                <th>Period</th>
+                <th>Moss Wall Temp (°C)</th>
+                <th>Non-Moss Wall Temp (°C)</th>
+                <th>Diff (°C)</th>
+              </tr>
+            </thead>
+            <tbody id="diurnalBody"></tbody>
+          </table>
+        </div>
+        <div class="grid charts sensor-charts" style="margin-top:1rem;">
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Diurnal Temperature Pattern</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="diurnalChart" data-name="analysis_diurnal_pattern">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="diurnalChart"></canvas></div>
+          </article>
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Hourly Average Temperatures</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="hourlyChart" data-name="analysis_hourly_temperatures">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="hourlyChart"></canvas></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── 6. Humidity Buffering ── -->
+      <section class="section panel fade-in" id="humiditySection">
+        <div class="panel-header">
+          <div>
+            <h2><span class="section-num">6</span> Humidity Buffering</h2>
+            <p class="muted">Standard deviation of humidity readings — lower values indicate more stable microclimate.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="humidityTable">
+            <thead>
+              <tr>
+                <th>Location</th>
+                <th>Humidity Std Dev (%)</th>
+                <th>Interpretation</th>
+              </tr>
+            </thead>
+            <tbody id="humidityBody"></tbody>
+          </table>
+        </div>
+        <div class="grid charts sensor-charts" style="margin-top:1rem;">
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Near-Wall vs Outdoor Humidity</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="humidityScatterChart" data-name="analysis_humidity_scatter">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="humidityScatterChart"></canvas></div>
+          </article>
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Humidity Variability</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="humidityBufferChart" data-name="analysis_humidity_variability">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="humidityBufferChart"></canvas></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── 7. Correlation Analysis ── -->
+      <section class="section panel fade-in" id="correlationSection">
+        <div class="panel-header">
+          <div>
+            <h2><span class="section-num">7</span> Correlation Analysis</h2>
+            <p class="muted">Pearson correlation heatmap across sensor channels. Near-zero correlations indicate noise-dominated data.</p>
+          </div>
+        </div>
+        <div class="analysis-note note-info">
+          <strong>ℹ Note:</strong> "Moss Wall" correlates near zero with everything else (0.03 to 0.09, one value −0.04), while every other temperature pair correlates strongly (0.92–0.98). A sensor measuring the same physical process should track them — near-zero correlation is evidence the series is dominated by noise/dropouts.
+        </div>
+        <div class="grid charts sensor-charts" style="margin-top:1rem;">
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Correlation Matrix</h3>
+              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="correlationChart" data-name="analysis_correlation_matrix">⬇ PNG</button>
+            </div>
+            <div class="chart-wrap"><canvas id="correlationChart"></canvas></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── 8. Key Findings ── -->
+      <section class="section panel panel-findings fade-in" id="findingsSection">
+        <div class="panel-header">
+          <div>
+            <h2><span class="section-num">8</span> Key Findings</h2>
+            <p class="muted">Summary of major results from the analysis.</p>
+          </div>
+        </div>
+        <div class="findings-grid" id="findingsGrid">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+
+      <p class="footer-note">Urban Heat — Comparative Environmental Monitoring of Moss-Based Cooling</p>
+    </main>
+  </body>
+</html>

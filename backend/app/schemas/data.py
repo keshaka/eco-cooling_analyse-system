@@ -99,3 +99,63 @@ class CompareResponse(BaseModel):
     nearAirTemperature: MetricComparison
     nearAirHumidity: MetricComparison
     wallTemperature: MetricComparison
+
+
+# ── Analysis report schemas ─────────────────────────────────────────
+
+class AnalysisTimeSeriesRow(BaseModel):
+    timestamp: Optional[str] = None
+    outdoorTemp: Optional[float] = None
+    outdoorHumidity: Optional[float] = None
+    mossSurfaceTemp: Optional[float] = None
+    nearMossTemp: Optional[float] = None
+    nearMossHumidity: Optional[float] = None
+    mossWallTemp: Optional[float] = None
+    nonMossSurfaceTemp: Optional[float] = None
+    nearNonMossTemp: Optional[float] = None
+    nearNonMossHumidity: Optional[float] = None
+    nonMossWallTemp: Optional[float] = None
+
+
+class DescriptiveStatRow(BaseModel):
+    sensor: str
+    mean: Optional[float] = None
+    std: Optional[float] = None
+    min: Optional[float] = None
+    max: Optional[float] = None
+
+
+class DiurnalRow(BaseModel):
+    period: str
+    mossWall: Optional[float] = None
+    nonMossWall: Optional[float] = None
+    diff: Optional[float] = None
+
+
+class CoolingEffect(BaseModel):
+    mossCooling: Optional[float] = None
+    nonMossCooling: Optional[float] = None
+    mossAdvantage: Optional[float] = None
+
+
+class HumidityBufferingRow(BaseModel):
+    location: str
+    stdDev: Optional[float] = None
+    interpretation: str
+
+
+class HourlyPatternRow(BaseModel):
+    hour: int
+    mossWall: Optional[float] = None
+    nonMossWall: Optional[float] = None
+    outdoor: Optional[float] = None
+
+
+class AnalysisResponse(BaseModel):
+    timeSeries: list[AnalysisTimeSeriesRow]
+    descriptiveStats: list[DescriptiveStatRow]
+    diurnal: list[DiurnalRow]
+    cooling: CoolingEffect
+    humidityBuffering: list[HumidityBufferingRow]
+    hourlyPattern: list[HourlyPatternRow]
+

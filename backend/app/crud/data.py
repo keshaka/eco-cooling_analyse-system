@@ -245,3 +245,592 @@ def get_comparison_metrics(db: Session):
         "nearAirHumidity": metric_block(moss_air_humidity, non_air_humidity),
         "wallTemperature": metric_block(moss_wall, non_wall),
     }
+
+
+# ── Analysis report queries (hourly-averaged) ──────────────────────
+
+def _safe_round(v, decimals=3):
+    return round(float(v), decimals) if v is not None else None
+
+
+def get_analysis_data(
+    db: Session,
+    start_date=None,
+    end_date=None,
+    min_humidity: Optional[float] = None,
+    max_humidity: Optional[float] = None,
+):
+    """
+    Return hourly-averaged, merged analysis data.
+
+    Each row represents one clock-hour, with averages of all sensor
+    readings that fell within that hour.  Optionally filtered by date
+    range (inclusive) and by outdoor-humidity range.
+    """
+    from sqlalchemy import text
+
+    # ── Build WHERE fragments ──────────────────────────────────────
+    moss_wheres, nm_wheres = [], []
+    params: dict = {}
+
+    if start_date is not None:
+        moss_wheres.append("m.[timestamp] >= :start_dt")
+        nm_wheres.append("n.[timestamp] >= :start_dt")
+        params["start_dt"] = datetime.combine(start_date, time.min)
+
+    if end_date is not None:
+        moss_wheres.append("m.[timestamp] <= :end_dt")
+        nm_wheres.append("n.[timestamp] <= :end_dt")
+        params["end_dt"] = datetime.combine(end_date, time.max)
+
+    if min_humidity is not None:
+        moss_wheres.append("m.outdoor_humidity >= :min_hum")
+        moss_wheres.append("m.near_moss_humidity >= :min_hum")
+        nm_wheres.append("n.near_non_moss_humidity >= :min_hum")
+        params["min_hum"] = min_humidity
+
+    if max_humidity is not None:
+        moss_wheres.append("m.outdoor_humidity <= :max_hum")
+        moss_wheres.append("m.near_moss_humidity <= :max_hum")
+        nm_wheres.append("n.near_non_moss_humidity <= :max_hum")
+        params["max_hum"] = max_humidity
+
+    if min_humidity is not None or max_humidity is not None:
+        sub_wheres = []
+        if min_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity >= :min_hum")
+        if max_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity <= :max_hum")
+        sub_where_sql = " AND ".join(sub_wheres)
+        nm_wheres.append(f"EXISTS (SELECT 1 FROM dbo.moss_data m_sub WHERE CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, m_sub.[timestamp]), 0) AS DATETIME) = CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, n.[timestamp]), 0) AS DATETIME) AND {sub_where_sql})")
+
+    moss_where_sql = ("WHERE " + " AND ".join(moss_wheres)) if moss_wheres else ""
+    nm_where_sql = ("WHERE " + " AND ".join(nm_wheres)) if nm_wheres else ""
+
+    # ── Moss hourly averages ───────────────────────────────────────
+    # NOTE: CASE WHEN col > 1 filters out sensor dropout artefacts
+    moss_sql = text(f"""
+        SELECT
+            CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, m.[timestamp]), 0) AS DATETIME) AS hour_bucket,
+            AVG(CASE WHEN m.outdoor_temp > 1 THEN m.outdoor_temp END)             AS avg_outdoor_temp,
+            AVG(CASE WHEN m.outdoor_humidity > 1 THEN m.outdoor_humidity END)       AS avg_outdoor_humidity,
+            AVG(CASE WHEN m.moss_surface_temp > 1 THEN m.moss_surface_temp END)    AS avg_moss_surface_temp,
+            AVG(CASE WHEN m.near_moss_temp > 1 THEN m.near_moss_temp END)          AS avg_near_moss_temp,
+            AVG(CASE WHEN m.near_moss_humidity > 1 THEN m.near_moss_humidity END)   AS avg_near_moss_humidity,
+            AVG(CASE WHEN m.wall_temp > 1 THEN m.wall_temp END)                    AS avg_moss_wall_temp,
+            COUNT(*)                  AS record_count
+        FROM dbo.moss_data m
+        {moss_where_sql}
+        GROUP BY CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, m.[timestamp]), 0) AS DATETIME)
+        ORDER BY hour_bucket ASC
+    """)
+
+    # ── Non-moss hourly averages ───────────────────────────────────
+    nm_sql = text(f"""
+        SELECT
+            CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, n.[timestamp]), 0) AS DATETIME) AS hour_bucket,
+            AVG(CASE WHEN n.non_moss_surface_temp > 1 THEN n.non_moss_surface_temp END)    AS avg_non_moss_surface_temp,
+            AVG(CASE WHEN n.near_non_moss_temp > 1 THEN n.near_non_moss_temp END)          AS avg_near_non_moss_temp,
+            AVG(CASE WHEN n.near_non_moss_humidity > 1 THEN n.near_non_moss_humidity END)   AS avg_near_non_moss_humidity,
+            AVG(CASE WHEN n.wall_temp > 1 THEN n.wall_temp END)                            AS avg_non_moss_wall_temp,
+            COUNT(*)                      AS record_count
+        FROM dbo.non_moss_data n
+        {nm_where_sql}
+        GROUP BY CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, n.[timestamp]), 0) AS DATETIME)
+        ORDER BY hour_bucket ASC
+    """)
+
+    moss_rows = db.execute(moss_sql, params).mappings().all()
+    nm_rows = db.execute(nm_sql, params).mappings().all()
+
+    # ── Merge on hour_bucket ───────────────────────────────────────
+    nm_by_hour = {row["hour_bucket"]: row for row in nm_rows}
+    all_hours = set()
+    for r in moss_rows:
+        all_hours.add(r["hour_bucket"])
+    for r in nm_rows:
+        all_hours.add(r["hour_bucket"])
+
+    moss_by_hour = {row["hour_bucket"]: row for row in moss_rows}
+
+    merged = []
+    for h in sorted(all_hours):
+        m = moss_by_hour.get(h)
+        n = nm_by_hour.get(h)
+        merged.append({
+            "timestamp": h.isoformat() if h else None,
+            "outdoorTemp": _safe_round(m["avg_outdoor_temp"]) if m else None,
+            "outdoorHumidity": _safe_round(m["avg_outdoor_humidity"]) if m else None,
+            "mossSurfaceTemp": _safe_round(m["avg_moss_surface_temp"]) if m else None,
+            "nearMossTemp": _safe_round(m["avg_near_moss_temp"]) if m else None,
+            "nearMossHumidity": _safe_round(m["avg_near_moss_humidity"]) if m else None,
+            "mossWallTemp": _safe_round(m["avg_moss_wall_temp"]) if m else None,
+            "nonMossSurfaceTemp": _safe_round(n["avg_non_moss_surface_temp"]) if n else None,
+            "nearNonMossTemp": _safe_round(n["avg_near_non_moss_temp"]) if n else None,
+            "nearNonMossHumidity": _safe_round(n["avg_near_non_moss_humidity"]) if n else None,
+            "nonMossWallTemp": _safe_round(n["avg_non_moss_wall_temp"]) if n else None,
+        })
+
+    return merged
+
+
+def get_analysis_descriptive_stats(
+    db: Session,
+    start_date=None,
+    end_date=None,
+    min_humidity: Optional[float] = None,
+    max_humidity: Optional[float] = None,
+):
+    """Compute descriptive statistics (mean, stdev, min, max) for each sensor."""
+    from sqlalchemy import text
+
+    moss_wheres, nm_wheres = [], []
+    params: dict = {}
+
+    if start_date is not None:
+        moss_wheres.append("m.[timestamp] >= :start_dt")
+        nm_wheres.append("n.[timestamp] >= :start_dt")
+        params["start_dt"] = datetime.combine(start_date, time.min)
+
+    if end_date is not None:
+        moss_wheres.append("m.[timestamp] <= :end_dt")
+        nm_wheres.append("n.[timestamp] <= :end_dt")
+        params["end_dt"] = datetime.combine(end_date, time.max)
+
+    if min_humidity is not None:
+        moss_wheres.append("m.outdoor_humidity >= :min_hum")
+        moss_wheres.append("m.near_moss_humidity >= :min_hum")
+        nm_wheres.append("n.near_non_moss_humidity >= :min_hum")
+        params["min_hum"] = min_humidity
+
+    if max_humidity is not None:
+        moss_wheres.append("m.outdoor_humidity <= :max_hum")
+        moss_wheres.append("m.near_moss_humidity <= :max_hum")
+        nm_wheres.append("n.near_non_moss_humidity <= :max_hum")
+        params["max_hum"] = max_humidity
+
+    if min_humidity is not None or max_humidity is not None:
+        sub_wheres = []
+        if min_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity >= :min_hum")
+        if max_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity <= :max_hum")
+        sub_where_sql = " AND ".join(sub_wheres)
+        nm_wheres.append(f"EXISTS (SELECT 1 FROM dbo.moss_data m_sub WHERE CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, m_sub.[timestamp]), 0) AS DATETIME) = CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, n.[timestamp]), 0) AS DATETIME) AND {sub_where_sql})")
+
+    moss_where = ("WHERE " + " AND ".join(moss_wheres)) if moss_wheres else ""
+    nm_where = ("WHERE " + " AND ".join(nm_wheres)) if nm_wheres else ""
+
+    # NOTE: CASE WHEN col > 1 filters out sensor dropout artefacts
+    moss_sql = text(f"""
+        SELECT
+            AVG(CASE WHEN m.outdoor_temp > 1 THEN m.outdoor_temp END)         AS mean_outdoor_temp,
+            STDEV(CASE WHEN m.outdoor_temp > 1 THEN m.outdoor_temp END)       AS std_outdoor_temp,
+            MIN(CASE WHEN m.outdoor_temp > 1 THEN m.outdoor_temp END)         AS min_outdoor_temp,
+            MAX(CASE WHEN m.outdoor_temp > 1 THEN m.outdoor_temp END)         AS max_outdoor_temp,
+
+            AVG(CASE WHEN m.outdoor_humidity > 1 THEN m.outdoor_humidity END)     AS mean_outdoor_humidity,
+            STDEV(CASE WHEN m.outdoor_humidity > 1 THEN m.outdoor_humidity END)   AS std_outdoor_humidity,
+            MIN(CASE WHEN m.outdoor_humidity > 1 THEN m.outdoor_humidity END)     AS min_outdoor_humidity,
+            MAX(CASE WHEN m.outdoor_humidity > 1 THEN m.outdoor_humidity END)     AS max_outdoor_humidity,
+
+            AVG(CASE WHEN m.wall_temp > 1 THEN m.wall_temp END)              AS mean_moss_wall_temp,
+            STDEV(CASE WHEN m.wall_temp > 1 THEN m.wall_temp END)            AS std_moss_wall_temp,
+            MIN(CASE WHEN m.wall_temp > 1 THEN m.wall_temp END)              AS min_moss_wall_temp,
+            MAX(CASE WHEN m.wall_temp > 1 THEN m.wall_temp END)              AS max_moss_wall_temp,
+
+            AVG(CASE WHEN m.moss_surface_temp > 1 THEN m.moss_surface_temp END)    AS mean_moss_surface_temp,
+            STDEV(CASE WHEN m.moss_surface_temp > 1 THEN m.moss_surface_temp END)  AS std_moss_surface_temp,
+            MIN(CASE WHEN m.moss_surface_temp > 1 THEN m.moss_surface_temp END)    AS min_moss_surface_temp,
+            MAX(CASE WHEN m.moss_surface_temp > 1 THEN m.moss_surface_temp END)    AS max_moss_surface_temp,
+
+            AVG(CASE WHEN m.near_moss_humidity > 1 THEN m.near_moss_humidity END)     AS mean_near_moss_humidity,
+            STDEV(CASE WHEN m.near_moss_humidity > 1 THEN m.near_moss_humidity END)   AS std_near_moss_humidity,
+            MIN(CASE WHEN m.near_moss_humidity > 1 THEN m.near_moss_humidity END)     AS min_near_moss_humidity,
+            MAX(CASE WHEN m.near_moss_humidity > 1 THEN m.near_moss_humidity END)     AS max_near_moss_humidity
+        FROM dbo.moss_data m
+        {moss_where}
+    """)
+
+    nm_sql = text(f"""
+        SELECT
+            AVG(CASE WHEN n.wall_temp > 1 THEN n.wall_temp END)                    AS mean_non_moss_wall_temp,
+            STDEV(CASE WHEN n.wall_temp > 1 THEN n.wall_temp END)                  AS std_non_moss_wall_temp,
+            MIN(CASE WHEN n.wall_temp > 1 THEN n.wall_temp END)                    AS min_non_moss_wall_temp,
+            MAX(CASE WHEN n.wall_temp > 1 THEN n.wall_temp END)                    AS max_non_moss_wall_temp,
+
+            AVG(CASE WHEN n.non_moss_surface_temp > 1 THEN n.non_moss_surface_temp END)    AS mean_non_moss_surface_temp,
+            STDEV(CASE WHEN n.non_moss_surface_temp > 1 THEN n.non_moss_surface_temp END)  AS std_non_moss_surface_temp,
+            MIN(CASE WHEN n.non_moss_surface_temp > 1 THEN n.non_moss_surface_temp END)    AS min_non_moss_surface_temp,
+            MAX(CASE WHEN n.non_moss_surface_temp > 1 THEN n.non_moss_surface_temp END)    AS max_non_moss_surface_temp,
+
+            AVG(CASE WHEN n.near_non_moss_humidity > 1 THEN n.near_non_moss_humidity END)     AS mean_near_non_moss_humidity,
+            STDEV(CASE WHEN n.near_non_moss_humidity > 1 THEN n.near_non_moss_humidity END)   AS std_near_non_moss_humidity,
+            MIN(CASE WHEN n.near_non_moss_humidity > 1 THEN n.near_non_moss_humidity END)     AS min_near_non_moss_humidity,
+            MAX(CASE WHEN n.near_non_moss_humidity > 1 THEN n.near_non_moss_humidity END)     AS max_near_non_moss_humidity
+        FROM dbo.non_moss_data n
+        {nm_where}
+    """)
+
+    mr = db.execute(moss_sql, params).mappings().one()
+    nr = db.execute(nm_sql, params).mappings().one()
+
+    def stat_row(sensor, mean_key, std_key, min_key, max_key, source):
+        return {
+            "sensor": sensor,
+            "mean": _safe_round(source[mean_key]),
+            "std": _safe_round(source[std_key]),
+            "min": _safe_round(source[min_key]),
+            "max": _safe_round(source[max_key]),
+        }
+
+    return [
+        stat_row("Outdoor Temp (°C)", "mean_outdoor_temp", "std_outdoor_temp", "min_outdoor_temp", "max_outdoor_temp", mr),
+        stat_row("Outdoor Humidity (%)", "mean_outdoor_humidity", "std_outdoor_humidity", "min_outdoor_humidity", "max_outdoor_humidity", mr),
+        stat_row("Moss Wall Temp (°C)", "mean_moss_wall_temp", "std_moss_wall_temp", "min_moss_wall_temp", "max_moss_wall_temp", mr),
+        stat_row("Non-Moss Wall Temp (°C)", "mean_non_moss_wall_temp", "std_non_moss_wall_temp", "min_non_moss_wall_temp", "max_non_moss_wall_temp", nr),
+        stat_row("Moss Surface Temp (°C)", "mean_moss_surface_temp", "std_moss_surface_temp", "min_moss_surface_temp", "max_moss_surface_temp", mr),
+        stat_row("Non-Moss Surface Temp (°C)", "mean_non_moss_surface_temp", "std_non_moss_surface_temp", "min_non_moss_surface_temp", "max_non_moss_surface_temp", nr),
+        stat_row("Near-Moss Humidity (%)", "mean_near_moss_humidity", "std_near_moss_humidity", "min_near_moss_humidity", "max_near_moss_humidity", mr),
+        stat_row("Near Non-Moss Humidity (%)", "mean_near_non_moss_humidity", "std_near_non_moss_humidity", "min_near_non_moss_humidity", "max_near_non_moss_humidity", nr),
+    ]
+
+
+def get_analysis_diurnal(
+    db: Session,
+    start_date=None,
+    end_date=None,
+    min_humidity: Optional[float] = None,
+    max_humidity: Optional[float] = None,
+):
+    """Average wall temps split by daytime (06-18) vs night (18-06)."""
+    from sqlalchemy import text
+
+    moss_wheres, nm_wheres = [], []
+    params: dict = {}
+
+    if start_date is not None:
+        moss_wheres.append("m.[timestamp] >= :start_dt")
+        nm_wheres.append("n.[timestamp] >= :start_dt")
+        params["start_dt"] = datetime.combine(start_date, time.min)
+
+    if end_date is not None:
+        moss_wheres.append("m.[timestamp] <= :end_dt")
+        nm_wheres.append("n.[timestamp] <= :end_dt")
+        params["end_dt"] = datetime.combine(end_date, time.max)
+
+    if min_humidity is not None:
+        moss_wheres.append("m.outdoor_humidity >= :min_hum")
+        moss_wheres.append("m.near_moss_humidity >= :min_hum")
+        nm_wheres.append("n.near_non_moss_humidity >= :min_hum")
+        params["min_hum"] = min_humidity
+
+    if max_humidity is not None:
+        moss_wheres.append("m.outdoor_humidity <= :max_hum")
+        moss_wheres.append("m.near_moss_humidity <= :max_hum")
+        nm_wheres.append("n.near_non_moss_humidity <= :max_hum")
+        params["max_hum"] = max_humidity
+
+    if min_humidity is not None or max_humidity is not None:
+        sub_wheres = []
+        if min_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity >= :min_hum")
+        if max_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity <= :max_hum")
+        sub_where_sql = " AND ".join(sub_wheres)
+        nm_wheres.append(f"EXISTS (SELECT 1 FROM dbo.moss_data m_sub WHERE CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, m_sub.[timestamp]), 0) AS DATETIME) = CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, n.[timestamp]), 0) AS DATETIME) AND {sub_where_sql})")
+
+    moss_where = ("AND " + " AND ".join(moss_wheres)) if moss_wheres else ""
+    nm_where = ("AND " + " AND ".join(nm_wheres)) if nm_wheres else ""
+
+    moss_sql = text(f"""
+        SELECT
+            CASE WHEN DATEPART(HOUR, m.[timestamp]) >= 6 AND DATEPART(HOUR, m.[timestamp]) < 18
+                 THEN 'Daytime (06:00-18:00)' ELSE 'Night-time (18:00-06:00)' END AS period,
+            AVG(CASE WHEN m.wall_temp > 1 THEN m.wall_temp END) AS avg_moss_wall
+        FROM dbo.moss_data m
+        WHERE 1=1 {moss_where}
+        GROUP BY CASE WHEN DATEPART(HOUR, m.[timestamp]) >= 6 AND DATEPART(HOUR, m.[timestamp]) < 18
+                      THEN 'Daytime (06:00-18:00)' ELSE 'Night-time (18:00-06:00)' END
+    """)
+
+    nm_sql = text(f"""
+        SELECT
+            CASE WHEN DATEPART(HOUR, n.[timestamp]) >= 6 AND DATEPART(HOUR, n.[timestamp]) < 18
+                 THEN 'Daytime (06:00-18:00)' ELSE 'Night-time (18:00-06:00)' END AS period,
+            AVG(CASE WHEN n.wall_temp > 1 THEN n.wall_temp END) AS avg_non_moss_wall
+        FROM dbo.non_moss_data n
+        WHERE 1=1 {nm_where}
+        GROUP BY CASE WHEN DATEPART(HOUR, n.[timestamp]) >= 6 AND DATEPART(HOUR, n.[timestamp]) < 18
+                      THEN 'Daytime (06:00-18:00)' ELSE 'Night-time (18:00-06:00)' END
+    """)
+
+    moss_rows = {r["period"]: r["avg_moss_wall"] for r in db.execute(moss_sql, params).mappings().all()}
+    nm_rows = {r["period"]: r["avg_non_moss_wall"] for r in db.execute(nm_sql, params).mappings().all()}
+
+    result = []
+    for period in ["Daytime (06:00-18:00)", "Night-time (18:00-06:00)"]:
+        m_val = _safe_round(moss_rows.get(period))
+        n_val = _safe_round(nm_rows.get(period))
+        diff = round(n_val - m_val, 3) if m_val is not None and n_val is not None else None
+        result.append({"period": period, "mossWall": m_val, "nonMossWall": n_val, "diff": diff})
+
+    return result
+
+
+def get_analysis_cooling(
+    db: Session,
+    start_date=None,
+    end_date=None,
+    min_humidity: Optional[float] = None,
+    max_humidity: Optional[float] = None,
+):
+    """Compute cooling effect: outdoor temp minus wall temp."""
+    from sqlalchemy import text
+
+    wheres = []
+    params: dict = {}
+
+    if start_date is not None:
+        wheres.append("m.[timestamp] >= :start_dt")
+        params["start_dt"] = datetime.combine(start_date, time.min)
+    if end_date is not None:
+        wheres.append("m.[timestamp] <= :end_dt")
+        params["end_dt"] = datetime.combine(end_date, time.max)
+    if min_humidity is not None:
+        wheres.append("m.outdoor_humidity >= :min_hum")
+        wheres.append("m.near_moss_humidity >= :min_hum")
+        params["min_hum"] = min_humidity
+    if max_humidity is not None:
+        wheres.append("m.outdoor_humidity <= :max_hum")
+        wheres.append("m.near_moss_humidity <= :max_hum")
+        params["max_hum"] = max_humidity
+
+    where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+
+    # Average cooling = avg(outdoor_temp - wall_temp), filtering out values <= 1
+    sql = text(f"""
+        SELECT
+            AVG(CASE WHEN m.outdoor_temp > 1 AND m.wall_temp > 1 THEN m.outdoor_temp - m.wall_temp END)  AS avg_moss_cooling,
+            AVG(CASE WHEN m.outdoor_temp > 1 AND n.wall_temp > 1 THEN m.outdoor_temp - n.wall_temp END)  AS avg_non_moss_cooling
+        FROM dbo.moss_data m
+        INNER JOIN dbo.non_moss_data n
+            ON CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, m.[timestamp]), 0) AS DATETIME)
+             = CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, n.[timestamp]), 0) AS DATETIME)
+        {where_sql}
+    """)
+
+    # Fallback: compute separately if join yields nothing
+    moss_sql = text(f"""
+        SELECT AVG(CASE WHEN m.outdoor_temp > 1 AND m.wall_temp > 1 THEN m.outdoor_temp - m.wall_temp END) AS avg_moss_cooling
+        FROM dbo.moss_data m
+        {where_sql}
+    """)
+
+    nm_wheres = []
+    nm_params: dict = {}
+    if start_date is not None:
+        nm_wheres.append("n.[timestamp] >= :start_dt")
+        nm_params["start_dt"] = datetime.combine(start_date, time.min)
+    if end_date is not None:
+        nm_wheres.append("n.[timestamp] <= :end_dt")
+        nm_params["end_dt"] = datetime.combine(end_date, time.max)
+
+    if min_humidity is not None:
+        nm_wheres.append("n.near_non_moss_humidity >= :min_hum")
+        nm_params["min_hum"] = min_humidity
+    if max_humidity is not None:
+        nm_wheres.append("n.near_non_moss_humidity <= :max_hum")
+        nm_params["max_hum"] = max_humidity
+
+    if min_humidity is not None or max_humidity is not None:
+        sub_wheres = []
+        if min_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity >= :min_hum")
+        if max_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity <= :max_hum")
+        sub_where_sql = " AND ".join(sub_wheres)
+        nm_wheres.append(f"EXISTS (SELECT 1 FROM dbo.moss_data m_sub WHERE CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, m_sub.[timestamp]), 0) AS DATETIME) = CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, n.[timestamp]), 0) AS DATETIME) AND {sub_where_sql})")
+
+    nm_where_sql = ("WHERE " + " AND ".join(nm_wheres)) if nm_wheres else ""
+
+    # For non-moss cooling, we need outdoor temp from moss table
+    # Use a simpler approach: get avg outdoor_temp from moss, avg wall from non-moss
+    outdoor_sql = text(f"""
+        SELECT AVG(CASE WHEN m.outdoor_temp > 1 THEN m.outdoor_temp END) AS avg_outdoor
+        FROM dbo.moss_data m
+        {where_sql}
+    """)
+
+    nm_wall_sql = text(f"""
+        SELECT AVG(CASE WHEN n.wall_temp > 1 THEN n.wall_temp END) AS avg_nm_wall
+        FROM dbo.non_moss_data n
+        {nm_where_sql}
+    """)
+
+    moss_cooling_row = db.execute(moss_sql, params).mappings().one()
+    outdoor_row = db.execute(outdoor_sql, params).mappings().one()
+    nm_wall_row = db.execute(nm_wall_sql, nm_params).mappings().one()
+
+    moss_cooling = _safe_round(moss_cooling_row["avg_moss_cooling"])
+    avg_outdoor = _safe_round(outdoor_row["avg_outdoor"])
+    avg_nm_wall = _safe_round(nm_wall_row["avg_nm_wall"])
+
+    non_moss_cooling = round(avg_outdoor - avg_nm_wall, 3) if avg_outdoor is not None and avg_nm_wall is not None else None
+    advantage = round(moss_cooling - non_moss_cooling, 3) if moss_cooling is not None and non_moss_cooling is not None else None
+
+    return {
+        "mossCooling": moss_cooling,
+        "nonMossCooling": non_moss_cooling,
+        "mossAdvantage": advantage,
+    }
+
+
+def get_analysis_humidity_buffering(
+    db: Session,
+    start_date=None,
+    end_date=None,
+    min_humidity: Optional[float] = None,
+    max_humidity: Optional[float] = None,
+):
+    """Standard deviation of humidity readings for buffering comparison."""
+    from sqlalchemy import text
+
+    moss_wheres, nm_wheres = [], []
+    params: dict = {}
+
+    if start_date is not None:
+        moss_wheres.append("m.[timestamp] >= :start_dt")
+        nm_wheres.append("n.[timestamp] >= :start_dt")
+        params["start_dt"] = datetime.combine(start_date, time.min)
+    if end_date is not None:
+        moss_wheres.append("m.[timestamp] <= :end_dt")
+        nm_wheres.append("n.[timestamp] <= :end_dt")
+        params["end_dt"] = datetime.combine(end_date, time.max)
+    if min_humidity is not None:
+        moss_wheres.append("m.outdoor_humidity >= :min_hum")
+        moss_wheres.append("m.near_moss_humidity >= :min_hum")
+        nm_wheres.append("n.near_non_moss_humidity >= :min_hum")
+        params["min_hum"] = min_humidity
+    if max_humidity is not None:
+        moss_wheres.append("m.outdoor_humidity <= :max_hum")
+        moss_wheres.append("m.near_moss_humidity <= :max_hum")
+        nm_wheres.append("n.near_non_moss_humidity <= :max_hum")
+        params["max_hum"] = max_humidity
+
+    if min_humidity is not None or max_humidity is not None:
+        sub_wheres = []
+        if min_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity >= :min_hum")
+        if max_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity <= :max_hum")
+        sub_where_sql = " AND ".join(sub_wheres)
+        nm_wheres.append(f"EXISTS (SELECT 1 FROM dbo.moss_data m_sub WHERE CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, m_sub.[timestamp]), 0) AS DATETIME) = CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, n.[timestamp]), 0) AS DATETIME) AND {sub_where_sql})")
+
+    moss_where = ("WHERE " + " AND ".join(moss_wheres)) if moss_wheres else ""
+    nm_where = ("WHERE " + " AND ".join(nm_wheres)) if nm_wheres else ""
+
+    moss_sql = text(f"""
+        SELECT
+            STDEV(CASE WHEN m.outdoor_humidity > 1 THEN m.outdoor_humidity END)     AS std_outdoor,
+            STDEV(CASE WHEN m.near_moss_humidity > 1 THEN m.near_moss_humidity END) AS std_near_moss
+        FROM dbo.moss_data m
+        {moss_where}
+    """)
+    nm_sql = text(f"""
+        SELECT STDEV(CASE WHEN n.near_non_moss_humidity > 1 THEN n.near_non_moss_humidity END) AS std_near_non_moss
+        FROM dbo.non_moss_data n
+        {nm_where}
+    """)
+
+    mr = db.execute(moss_sql, params).mappings().one()
+    nr = db.execute(nm_sql, params).mappings().one()
+
+    return [
+        {"location": "Outdoor", "stdDev": _safe_round(mr["std_outdoor"]), "interpretation": "Reference (uncontrolled)"},
+        {"location": "Near Moss Wall", "stdDev": _safe_round(mr["std_near_moss"]), "interpretation": "Moss-side microclimate"},
+        {"location": "Near Non-Moss Wall", "stdDev": _safe_round(nr["std_near_non_moss"]), "interpretation": "Bare-wall microclimate"},
+    ]
+
+
+def get_analysis_hourly_pattern(
+    db: Session,
+    start_date=None,
+    end_date=None,
+    min_humidity: Optional[float] = None,
+    max_humidity: Optional[float] = None,
+):
+    """Average temperature by hour of day (0-23) for diurnal chart."""
+    from sqlalchemy import text
+
+    moss_wheres, nm_wheres = [], []
+    params: dict = {}
+
+    if start_date is not None:
+        moss_wheres.append("m.[timestamp] >= :start_dt")
+        nm_wheres.append("n.[timestamp] >= :start_dt")
+        params["start_dt"] = datetime.combine(start_date, time.min)
+    if end_date is not None:
+        moss_wheres.append("m.[timestamp] <= :end_dt")
+        nm_wheres.append("n.[timestamp] <= :end_dt")
+        params["end_dt"] = datetime.combine(end_date, time.max)
+    if min_humidity is not None:
+        moss_wheres.append("m.outdoor_humidity >= :min_hum")
+        moss_wheres.append("m.near_moss_humidity >= :min_hum")
+        nm_wheres.append("n.near_non_moss_humidity >= :min_hum")
+        params["min_hum"] = min_humidity
+    if max_humidity is not None:
+        moss_wheres.append("m.outdoor_humidity <= :max_hum")
+        moss_wheres.append("m.near_moss_humidity <= :max_hum")
+        nm_wheres.append("n.near_non_moss_humidity <= :max_hum")
+        params["max_hum"] = max_humidity
+
+    if min_humidity is not None or max_humidity is not None:
+        sub_wheres = []
+        if min_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity >= :min_hum")
+        if max_humidity is not None:
+            sub_wheres.append("m_sub.outdoor_humidity <= :max_hum")
+        sub_where_sql = " AND ".join(sub_wheres)
+        nm_wheres.append(f"EXISTS (SELECT 1 FROM dbo.moss_data m_sub WHERE CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, m_sub.[timestamp]), 0) AS DATETIME) = CAST(DATEADD(HOUR, DATEDIFF(HOUR, 0, n.[timestamp]), 0) AS DATETIME) AND {sub_where_sql})")
+
+    moss_where = ("WHERE " + " AND ".join(moss_wheres)) if moss_wheres else ""
+    nm_where = ("WHERE " + " AND ".join(nm_wheres)) if nm_wheres else ""
+
+    moss_sql = text(f"""
+        SELECT
+            DATEPART(HOUR, m.[timestamp]) AS hour_of_day,
+            AVG(CASE WHEN m.wall_temp > 1 THEN m.wall_temp END) AS avg_moss_wall,
+            AVG(CASE WHEN m.outdoor_temp > 1 THEN m.outdoor_temp END) AS avg_outdoor
+        FROM dbo.moss_data m
+        {moss_where}
+        GROUP BY DATEPART(HOUR, m.[timestamp])
+        ORDER BY hour_of_day
+    """)
+
+    nm_sql = text(f"""
+        SELECT
+            DATEPART(HOUR, n.[timestamp]) AS hour_of_day,
+            AVG(CASE WHEN n.wall_temp > 1 THEN n.wall_temp END) AS avg_non_moss_wall
+        FROM dbo.non_moss_data n
+        {nm_where}
+        GROUP BY DATEPART(HOUR, n.[timestamp])
+        ORDER BY hour_of_day
+    """)
+
+    moss_rows = {r["hour_of_day"]: r for r in db.execute(moss_sql, params).mappings().all()}
+    nm_rows = {r["hour_of_day"]: r for r in db.execute(nm_sql, params).mappings().all()}
+
+    hours = []
+    for h in range(24):
+        m = moss_rows.get(h)
+        n = nm_rows.get(h)
+        hours.append({
+            "hour": h,
+            "mossWall": _safe_round(m["avg_moss_wall"]) if m else None,
+            "nonMossWall": _safe_round(n["avg_non_moss_wall"]) if n else None,
+            "outdoor": _safe_round(m["avg_outdoor"]) if m else None,
+        })
+
+    return hours
+

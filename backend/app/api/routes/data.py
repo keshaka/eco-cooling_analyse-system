@@ -8,6 +8,12 @@ from sqlalchemy.orm import Session
 from app.crud.data import (
     create_moss_data,
     create_non_moss_data,
+    get_analysis_cooling,
+    get_analysis_data,
+    get_analysis_descriptive_stats,
+    get_analysis_diurnal,
+    get_analysis_hourly_pattern,
+    get_analysis_humidity_buffering,
     get_comparison_metrics,
     get_history,
     get_history_paginated,
@@ -17,6 +23,7 @@ from app.crud.data import (
 from app.core.database import get_db
 from app.models.tables import MossData, NonMossData
 from app.schemas.data import (
+    AnalysisResponse,
     CompareResponse,
     HistoryQuery,
     HistoryResponse,
@@ -176,3 +183,63 @@ def compare_data(db: Session = Depends(get_db)):
     except SQLAlchemyError as exc:
         logger.exception("Database error while comparing data")
         raise HTTPException(status_code=500, detail="Unable to compare data") from exc
+
+
+@router.get("/analysis", response_model=AnalysisResponse)
+def analysis_report(
+    start: str = Query(None, description="Start date in YYYY-MM-DD (optional)"),
+    end: str = Query(None, description="End date in YYYY-MM-DD (optional)"),
+    minHumidity: float = Query(None, ge=0, le=100, description="Min humidity filter — applies to outdoor, near-moss, and near-non-moss (optional)"),
+    maxHumidity: float = Query(None, ge=0, le=100, description="Max humidity filter — applies to outdoor, near-moss, and near-non-moss (optional)"),
+    db: Session = Depends(get_db),
+):
+    """Full analysis report with hourly-averaged data, descriptive stats,
+    diurnal patterns, cooling effects, and humidity buffering.
+    All sections respect the same date-range and humidity-range filters."""
+    from datetime import date as date_type
+
+    start_date = None
+    end_date = None
+
+    if start:
+        try:
+            start_date = date_type.fromisoformat(start)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid start date: {start}") from exc
+
+    if end:
+        try:
+            end_date = date_type.fromisoformat(end)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid end date: {end}") from exc
+
+    if start_date and end_date and end_date < start_date:
+        raise HTTPException(status_code=422, detail="end date must be >= start date")
+
+    filter_args = dict(
+        start_date=start_date,
+        end_date=end_date,
+        min_humidity=minHumidity,
+        max_humidity=maxHumidity,
+    )
+
+    try:
+        time_series = get_analysis_data(db, **filter_args)
+        descriptive = get_analysis_descriptive_stats(db, **filter_args)
+        diurnal = get_analysis_diurnal(db, **filter_args)
+        cooling = get_analysis_cooling(db, **filter_args)
+        humidity = get_analysis_humidity_buffering(db, **filter_args)
+        hourly = get_analysis_hourly_pattern(db, **filter_args)
+
+        return AnalysisResponse(
+            timeSeries=time_series,
+            descriptiveStats=descriptive,
+            diurnal=diurnal,
+            cooling=cooling,
+            humidityBuffering=humidity,
+            hourlyPattern=hourly,
+        )
+    except SQLAlchemyError as exc:
+        logger.exception("Database error while generating analysis report")
+        raise HTTPException(status_code=500, detail="Unable to generate analysis report") from exc
+

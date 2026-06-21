@@ -97,6 +97,50 @@ function updatePaginationUI(page, total, rowCount) {
   }
 }
 
+function buildFilterQuery() {
+  const params = new URLSearchParams();
+  const startTime = document.getElementById("histStartTime")?.value || "";
+  const endTime = document.getElementById("histEndTime")?.value || "";
+  const minHum = document.getElementById("histMinHumidity")?.value || "";
+  const maxHum = document.getElementById("histMaxHumidity")?.value || "";
+
+  if (startTime) params.set("startTime", startTime);
+  if (endTime) params.set("endTime", endTime);
+  if (minHum) params.set("minHumidity", minHum);
+  if (maxHum) params.set("maxHumidity", maxHum);
+
+  return params.toString();
+}
+
+function renderHistoryFilterStatus() {
+  const el = document.getElementById("historyFilterStatus");
+  if (!el) return;
+
+  const parts = [];
+  const s = document.getElementById("startDate").value;
+  const st = document.getElementById("histStartTime")?.value || "";
+  const e = document.getElementById("endDate").value;
+  const et = document.getElementById("histEndTime")?.value || "";
+  const minH = document.getElementById("histMinHumidity")?.value || "";
+  const maxH = document.getElementById("histMaxHumidity")?.value || "";
+
+  if (s) parts.push(`From: ${s}${st ? " " + st : ""}`);
+  if (e) parts.push(`To: ${e}${et ? " " + et : ""}`);
+  if (!s && st) parts.push(`Start Time: ${st}`);
+  if (!e && et) parts.push(`End Time: ${et}`);
+  if (minH) parts.push(`Min Humidity: ${minH}%`);
+  if (maxH) parts.push(`Max Humidity: ${maxH}%`);
+
+  const countInfo = totalRows > 0 ? ` \u00b7 ${totalRows} total rows` : "";
+
+  if (parts.length <= 2) {
+    // Only date filters (default)
+    el.innerHTML = `<span class="filter-inactive">Date range only${countInfo}</span>`;
+  } else {
+    el.innerHTML = `<span class="filter-active">\ud83d\udfe2 Active filters: ${parts.join(" \u00b7 ")}${countInfo}</span>`;
+  }
+}
+
 async function loadPage(page) {
   const start = document.getElementById("startDate").value;
   const end = document.getElementById("endDate").value;
@@ -109,7 +153,8 @@ async function loadPage(page) {
   rowsPerPage = getRowsPerPage();
 
   try {
-    const url = `/api/data/history/paginated?start=${start}&end=${end}&page=${page}&per_page=${rowsPerPage}`;
+    const extraFilters = buildFilterQuery();
+    const url = `/api/data/history/paginated?start=${start}&end=${end}&page=${page}&per_page=${rowsPerPage}${extraFilters ? "&" + extraFilters : ""}`;
     const payload = await apiGet(url);
 
     currentPage = payload.page;
@@ -118,8 +163,9 @@ async function loadPage(page) {
 
     renderRows(payload.rows);
     updatePaginationUI(currentPage, totalPages, totalRows);
+    renderHistoryFilterStatus();
 
-    // Invalidate cached export data when the date range might have changed
+    // Invalidate cached export data when filters might have changed
     allMergedRowsForExport = null;
   } catch (error) {
     console.error(error);
@@ -141,9 +187,10 @@ async function exportAllAsCsv() {
   }
 
   try {
-    // Fetch all pages for export (use the old non-paginated endpoint for full data)
+    // Fetch all pages for export with current filters
     if (!allMergedRowsForExport) {
-      const payload = await apiGet(`/api/data/history/paginated?start=${start}&end=${end}&page=1&per_page=${totalRows || 999999}`);
+      const extraFilters = buildFilterQuery();
+      const payload = await apiGet(`/api/data/history/paginated?start=${start}&end=${end}&page=1&per_page=${totalRows || 999999}${extraFilters ? "&" + extraFilters : ""}`);
       allMergedRowsForExport = payload.rows;
     }
 
@@ -216,6 +263,19 @@ function bindEvents() {
   });
 
   document.getElementById("exportCsv").addEventListener("click", exportAllAsCsv);
+
+  // Reset Filters
+  const resetBtn = document.getElementById("resetHistoryFilters");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", () => {
+      document.getElementById("histStartTime").value = "";
+      document.getElementById("histEndTime").value = "";
+      document.getElementById("histMinHumidity").value = "";
+      document.getElementById("histMaxHumidity").value = "";
+      initDefaultDates();
+      loadHistoryRange();
+    });
+  }
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

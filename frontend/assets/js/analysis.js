@@ -125,14 +125,18 @@ function formatTs(isoStr) {
 // ── API call ─────────────────────────────────────────────────────
 
 async function fetchAnalysis() {
-  const startDate = document.getElementById("analysisStartDate").value || "";
-  const endDate   = document.getElementById("analysisEndDate").value || "";
-  const minHum    = document.getElementById("minHumidity").value || "";
-  const maxHum    = document.getElementById("maxHumidity").value || "";
+  const startDate  = document.getElementById("analysisStartDate").value || "";
+  const startTime  = document.getElementById("analysisStartTime").value || "";
+  const endDate    = document.getElementById("analysisEndDate").value || "";
+  const endTime    = document.getElementById("analysisEndTime").value || "";
+  const minHum     = document.getElementById("minHumidity").value || "";
+  const maxHum     = document.getElementById("maxHumidity").value || "";
 
   const params = new URLSearchParams();
   if (startDate) params.set("start", startDate);
   if (endDate)   params.set("end", endDate);
+  if (startTime) params.set("startTime", startTime);
+  if (endTime)   params.set("endTime", endTime);
   if (minHum)    params.set("minHumidity", minHum);
   if (maxHum)    params.set("maxHumidity", maxHum);
 
@@ -211,12 +215,16 @@ function renderFilterStatus() {
   const el = document.getElementById("filterStatus");
   const parts = [];
   const s = document.getElementById("analysisStartDate").value;
+  const st = document.getElementById("analysisStartTime").value;
   const e = document.getElementById("analysisEndDate").value;
+  const et = document.getElementById("analysisEndTime").value;
   const minH = document.getElementById("minHumidity").value;
   const maxH = document.getElementById("maxHumidity").value;
 
-  if (s) parts.push(`From: ${s}`);
-  if (e) parts.push(`To: ${e}`);
+  if (s) parts.push(`From: ${s}${st ? " " + st : ""}`);
+  if (e) parts.push(`To: ${e}${et ? " " + et : ""}`);
+  if (!s && st) parts.push(`Start Time: ${st}`);
+  if (!e && et) parts.push(`End Time: ${et}`);
   if (minH) parts.push(`Min Humidity: ${minH}%`);
   if (maxH) parts.push(`Max Humidity: ${maxH}%`);
 
@@ -966,7 +974,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Reset Filters
   document.getElementById("resetAnalysisFilters").addEventListener("click", () => {
     document.getElementById("analysisStartDate").value = "";
+    document.getElementById("analysisStartTime").value = "";
     document.getElementById("analysisEndDate").value = "";
+    document.getElementById("analysisEndTime").value = "";
     document.getElementById("minHumidity").value = "";
     document.getElementById("maxHumidity").value = "";
     fetchAnalysis();

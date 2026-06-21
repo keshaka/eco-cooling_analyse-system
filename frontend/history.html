@@ -37,19 +37,43 @@
         </div>
       </section>
 
-      <section class="section panel fade-in">
+      <section class="section panel panel-filter fade-in" id="historyFilterPanel">
+        <div class="panel-header">
+          <div>
+            <h2>🔍 Filters</h2>
+            <p class="muted">Filter historical data by date range, time-of-day window, and humidity range.</p>
+          </div>
+        </div>
         <div class="filters">
           <label>
             Start Date
             <input type="date" id="startDate" />
           </label>
           <label>
+            Start Time
+            <input type="time" id="histStartTime" />
+          </label>
+          <label>
             End Date
             <input type="date" id="endDate" />
           </label>
-          <button id="loadHistory" type="button">Load Data</button>
+          <label>
+            End Time
+            <input type="time" id="histEndTime" />
+          </label>
+          <label>
+            Min Humidity (%)
+            <input type="number" id="histMinHumidity" min="0" max="100" step="1" placeholder="0" />
+          </label>
+          <label>
+            Max Humidity (%)
+            <input type="number" id="histMaxHumidity" min="0" max="100" step="1" placeholder="100" />
+          </label>
+          <button id="loadHistory" type="button" class="btn-accent">Load Data</button>
           <button id="exportCsv" type="button">Export CSV</button>
+          <button id="resetHistoryFilters" type="button">Reset</button>
         </div>
+        <div class="filter-status" id="historyFilterStatus"></div>
       </section>
 
       <section class="section panel fade-in">

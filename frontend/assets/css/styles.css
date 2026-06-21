@@ -221,6 +221,14 @@ input[type="date"] {
   padding: 0.48rem 0.6rem;
 }
 
+input[type="time"] {
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.48rem 0.6rem;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -617,7 +625,8 @@ input[type="number"] {
 }
 
 input[type="number"]:focus,
-input[type="date"]:focus {
+input[type="date"]:focus,
+input[type="time"]:focus {
   outline: none;
   border-color: var(--brand);
   box-shadow: 0 0 0 3px rgba(114, 210, 143, 0.15);

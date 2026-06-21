@@ -142,6 +142,10 @@ def historical_data(
 def paginated_history(
     start: str = Query(..., description="Start date in YYYY-MM-DD"),
     end: str = Query(..., description="End date in YYYY-MM-DD"),
+    startTime: str = Query(None, description="Start time in HH:MM (optional)"),
+    endTime: str = Query(None, description="End time in HH:MM (optional)"),
+    minHumidity: float = Query(None, ge=0, le=100, description="Min humidity filter (optional)"),
+    maxHumidity: float = Query(None, ge=0, le=100, description="Max humidity filter (optional)"),
     page: int = Query(1, ge=1, description="Page number (1-based)"),
     per_page: int = Query(30, ge=1, description="Rows per page"),
     db: Session = Depends(get_db),
@@ -151,8 +155,29 @@ def paginated_history(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    from datetime import time as time_type
+
+    start_time = None
+    end_time = None
+    if startTime:
+        try:
+            parts = startTime.split(":")
+            start_time = time_type(int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError) as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid startTime: {startTime}") from exc
+    if endTime:
+        try:
+            parts = endTime.split(":")
+            end_time = time_type(int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError) as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid endTime: {endTime}") from exc
+
     try:
-        rows, total = get_history_paginated(db, params.start, params.end, page, per_page)
+        rows, total = get_history_paginated(
+            db, params.start, params.end, page, per_page,
+            start_time=start_time, end_time=end_time,
+            min_humidity=minHumidity, max_humidity=maxHumidity,
+        )
         total_pages = max(1, -(-total // per_page))  # ceil division
 
         # Convert timestamps to IST
@@ -189,17 +214,22 @@ def compare_data(db: Session = Depends(get_db)):
 def analysis_report(
     start: str = Query(None, description="Start date in YYYY-MM-DD (optional)"),
     end: str = Query(None, description="End date in YYYY-MM-DD (optional)"),
+    startTime: str = Query(None, description="Start time in HH:MM (optional)"),
+    endTime: str = Query(None, description="End time in HH:MM (optional)"),
     minHumidity: float = Query(None, ge=0, le=100, description="Min humidity filter — applies to outdoor, near-moss, and near-non-moss (optional)"),
     maxHumidity: float = Query(None, ge=0, le=100, description="Max humidity filter — applies to outdoor, near-moss, and near-non-moss (optional)"),
     db: Session = Depends(get_db),
 ):
     """Full analysis report with hourly-averaged data, descriptive stats,
     diurnal patterns, cooling effects, and humidity buffering.
-    All sections respect the same date-range and humidity-range filters."""
+    All sections respect the same date-range, time-range, and humidity-range filters."""
     from datetime import date as date_type
+    from datetime import time as time_type
 
     start_date = None
     end_date = None
+    start_time = None
+    end_time = None
 
     if start:
         try:
@@ -213,12 +243,28 @@ def analysis_report(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=f"Invalid end date: {end}") from exc
 
+    if startTime:
+        try:
+            parts = startTime.split(":")
+            start_time = time_type(int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError) as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid startTime: {startTime}") from exc
+
+    if endTime:
+        try:
+            parts = endTime.split(":")
+            end_time = time_type(int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError) as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid endTime: {endTime}") from exc
+
     if start_date and end_date and end_date < start_date:
         raise HTTPException(status_code=422, detail="end date must be >= start date")
 
     filter_args = dict(
         start_date=start_date,
         end_date=end_date,
+        start_time=start_time,
+        end_time=end_time,
         min_humidity=minHumidity,
         max_humidity=maxHumidity,
     )

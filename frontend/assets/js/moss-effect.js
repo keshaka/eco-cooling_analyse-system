@@ -119,12 +119,14 @@ function getEntries() {
 
 // ── API call per scenario ─────────────────────────────────────────
 
-async function fetchScenario(entry, minHum, maxHum) {
+async function fetchScenario(entry, minHum, maxHum, startTime, endTime) {
   const params = new URLSearchParams();
   params.set("start", entry.start);
   params.set("end", entry.end);
   if (minHum !== "") params.set("minHumidity", minHum);
   if (maxHum !== "") params.set("maxHumidity", maxHum);
+  if (startTime) params.set("startTime", startTime);
+  if (endTime) params.set("endTime", endTime);
 
   const url = `${API_BASE_URL}/api/data/analysis?${params.toString()}`;
   const resp = await fetch(url);
@@ -146,13 +148,15 @@ async function generate() {
 
   const minHum = document.getElementById("meMinHumidity").value;
   const maxHum = document.getElementById("meMaxHumidity").value;
+  const startTime = document.getElementById("meStartTime")?.value || "";
+  const endTime = document.getElementById("meEndTime")?.value || "";
 
   showLoading(true);
   setStatus("");
   document.getElementById("meResults").style.display = "none";
 
   try {
-    const promises = entries.map(e => fetchScenario(e, minHum, maxHum));
+    const promises = entries.map(e => fetchScenario(e, minHum, maxHum, startTime, endTime));
     const results = await Promise.all(promises);
 
     scenarioResults = entries.map((e, i) => ({
@@ -172,6 +176,8 @@ async function generate() {
     const parts = [`${scenarioResults.length} scenario(s)`];
     if (minHum) parts.push(`Min humidity: ${minHum}%`);
     if (maxHum) parts.push(`Max humidity: ${maxHum}%`);
+    if (startTime) parts.push(`Start time: ${startTime}`);
+    if (endTime) parts.push(`End time: ${endTime}`);
     setStatus(`<span class="filter-active">🟢 ${parts.join(" · ")}</span>`);
   } catch (err) {
     console.error("Moss-effect generation failed:", err);

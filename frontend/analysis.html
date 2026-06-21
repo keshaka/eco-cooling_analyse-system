@@ -46,7 +46,7 @@
         <div class="panel-header">
           <div>
             <h2>🔍 Filters</h2>
-            <p class="muted">Narrow the analysis by date range and humidity range. Humidity filter applies to all humidity sensors (outdoor, near-moss, near-non-moss).</p>
+            <p class="muted">Narrow the analysis by date range, time-of-day window, and humidity range. Humidity filter applies to all humidity sensors (outdoor, near-moss, near-non-moss).</p>
           </div>
         </div>
         <div class="filters" id="analysisFilters">
@@ -55,8 +55,16 @@
             <input type="date" id="analysisStartDate" />
           </label>
           <label>
+            Start Time
+            <input type="time" id="analysisStartTime" />
+          </label>
+          <label>
             End Date
             <input type="date" id="analysisEndDate" />
+          </label>
+          <label>
+            End Time
+            <input type="time" id="analysisEndTime" />
           </label>
           <label>
             Min Humidity (%)

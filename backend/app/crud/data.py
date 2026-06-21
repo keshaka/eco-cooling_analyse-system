@@ -9,6 +9,39 @@ from app.models.tables import MossData, NonMossData
 from app.schemas.data import MossDataCreate, NonMossDataCreate
 
 
+MOSS_VALID_CONDITIONS = [
+    MossData.outdoor_temp >= 0,
+    MossData.outdoor_humidity >= 0,
+    MossData.moss_surface_temp >= 0,
+    MossData.near_moss_temp >= 0,
+    MossData.near_moss_humidity >= 0,
+    MossData.wall_temp >= 0,
+]
+
+NON_MOSS_VALID_CONDITIONS = [
+    NonMossData.non_moss_surface_temp >= 0,
+    NonMossData.near_non_moss_temp >= 0,
+    NonMossData.near_non_moss_humidity >= 0,
+    NonMossData.wall_temp >= 0,
+]
+
+MOSS_VALID_SQL = [
+    "m.outdoor_temp >= 0",
+    "m.outdoor_humidity >= 0",
+    "m.moss_surface_temp >= 0",
+    "m.near_moss_temp >= 0",
+    "m.near_moss_humidity >= 0",
+    "m.wall_temp >= 0",
+]
+
+NON_MOSS_VALID_SQL = [
+    "n.non_moss_surface_temp >= 0",
+    "n.near_non_moss_temp >= 0",
+    "n.near_non_moss_humidity >= 0",
+    "n.wall_temp >= 0",
+]
+
+
 def create_moss_data(db: Session, payload: MossDataCreate) -> MossData:
     current_time = datetime.now()
     row = MossData(
@@ -42,29 +75,46 @@ def create_non_moss_data(db: Session, payload: NonMossDataCreate) -> NonMossData
 
 
 def get_latest_moss(db: Session) -> Optional[MossData]:
-    stmt = select(MossData).order_by(desc(MossData.timestamp)).limit(1)
+    stmt = select(MossData).where(*MOSS_VALID_CONDITIONS).order_by(desc(MossData.timestamp)).limit(1)
     return db.execute(stmt).scalar_one_or_none()
 
 
 def get_latest_non_moss(db: Session) -> Optional[NonMossData]:
-    stmt = select(NonMossData).order_by(desc(NonMossData.timestamp)).limit(1)
+    stmt = select(NonMossData).where(*NON_MOSS_VALID_CONDITIONS).order_by(desc(NonMossData.timestamp)).limit(1)
     return db.execute(stmt).scalar_one_or_none()
 
 
-def get_history(db: Session, start_date, end_date):
+def get_history(
+    db: Session,
+    start_date,
+    end_date,
+    start_time: Optional[time] = None,
+    end_time: Optional[time] = None,
+    min_humidity: Optional[float] = None,
+    max_humidity: Optional[float] = None,
+):
+    from sqlalchemy import cast, Time
     start_dt = datetime.combine(start_date, time.min)
     end_dt = datetime.combine(end_date, time.max)
 
-    moss_stmt = (
-        select(MossData)
-        .where(MossData.timestamp >= start_dt, MossData.timestamp <= end_dt)
-        .order_by(MossData.timestamp.asc())
-    )
-    non_moss_stmt = (
-        select(NonMossData)
-        .where(NonMossData.timestamp >= start_dt, NonMossData.timestamp <= end_dt)
-        .order_by(NonMossData.timestamp.asc())
-    )
+    moss_stmt = select(MossData).where(MossData.timestamp >= start_dt, MossData.timestamp <= end_dt, *MOSS_VALID_CONDITIONS)
+    non_moss_stmt = select(NonMossData).where(NonMossData.timestamp >= start_dt, NonMossData.timestamp <= end_dt, *NON_MOSS_VALID_CONDITIONS)
+
+    if start_time is not None:
+        moss_stmt = moss_stmt.where(cast(MossData.timestamp, Time) >= start_time)
+        non_moss_stmt = non_moss_stmt.where(cast(NonMossData.timestamp, Time) >= start_time)
+    if end_time is not None:
+        moss_stmt = moss_stmt.where(cast(MossData.timestamp, Time) <= end_time)
+        non_moss_stmt = non_moss_stmt.where(cast(NonMossData.timestamp, Time) <= end_time)
+    if min_humidity is not None:
+        moss_stmt = moss_stmt.where(MossData.outdoor_humidity >= min_humidity, MossData.near_moss_humidity >= min_humidity)
+        non_moss_stmt = non_moss_stmt.where(NonMossData.near_non_moss_humidity >= min_humidity)
+    if max_humidity is not None:
+        moss_stmt = moss_stmt.where(MossData.outdoor_humidity <= max_humidity, MossData.near_moss_humidity <= max_humidity)
+        non_moss_stmt = non_moss_stmt.where(NonMossData.near_non_moss_humidity <= max_humidity)
+
+    moss_stmt = moss_stmt.order_by(MossData.timestamp.asc())
+    non_moss_stmt = non_moss_stmt.order_by(NonMossData.timestamp.asc())
 
     moss_rows = list(db.execute(moss_stmt).scalars().all())
     non_moss_rows = list(db.execute(non_moss_stmt).scalars().all())
@@ -187,9 +237,19 @@ def _merge_rows(moss_rows, non_moss_rows):
     return merged
 
 
-def get_history_paginated(db: Session, start_date, end_date, page: int = 1, per_page: int = 30):
+def get_history_paginated(
+    db: Session,
+    start_date,
+    end_date,
+    page: int = 1,
+    per_page: int = 30,
+    start_time: Optional[time] = None,
+    end_time: Optional[time] = None,
+    min_humidity: Optional[float] = None,
+    max_humidity: Optional[float] = None,
+):
     """Return ``(page_rows, total_count)`` of merged history."""
-    moss_rows, non_moss_rows = get_history(db, start_date, end_date)
+    moss_rows, non_moss_rows = get_history(db, start_date, end_date, start_time, end_time, min_humidity, max_humidity)
     merged = _merge_rows(moss_rows, non_moss_rows)
     total = len(merged)
     start_idx = (page - 1) * per_page
@@ -211,13 +271,13 @@ def get_comparison_metrics(db: Session):
         func.avg(MossData.near_moss_temp),
         func.avg(MossData.near_moss_humidity),
         func.avg(MossData.wall_temp),
-    )
+    ).where(*MOSS_VALID_CONDITIONS)
     non_moss_avg_stmt = select(
         func.avg(NonMossData.non_moss_surface_temp),
         func.avg(NonMossData.near_non_moss_temp),
         func.avg(NonMossData.near_non_moss_humidity),
         func.avg(NonMossData.wall_temp),
-    )
+    ).where(*NON_MOSS_VALID_CONDITIONS)
 
     moss_avgs = db.execute(moss_avg_stmt).one()
     non_moss_avgs = db.execute(non_moss_avg_stmt).one()
@@ -257,6 +317,8 @@ def get_analysis_data(
     db: Session,
     start_date=None,
     end_date=None,
+    start_time: Optional[time] = None,
+    end_time: Optional[time] = None,
     min_humidity: Optional[float] = None,
     max_humidity: Optional[float] = None,
 ):
@@ -270,7 +332,7 @@ def get_analysis_data(
     from sqlalchemy import text
 
     # ── Build WHERE fragments ──────────────────────────────────────
-    moss_wheres, nm_wheres = [], []
+    moss_wheres, nm_wheres = list(MOSS_VALID_SQL), list(NON_MOSS_VALID_SQL)
     params: dict = {}
 
     if start_date is not None:
@@ -282,6 +344,15 @@ def get_analysis_data(
         moss_wheres.append("m.[timestamp] <= :end_dt")
         nm_wheres.append("n.[timestamp] <= :end_dt")
         params["end_dt"] = datetime.combine(end_date, time.max)
+
+    if start_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
 
     if min_humidity is not None:
         moss_wheres.append("m.outdoor_humidity >= :min_hum")
@@ -378,13 +449,15 @@ def get_analysis_descriptive_stats(
     db: Session,
     start_date=None,
     end_date=None,
+    start_time: Optional[time] = None,
+    end_time: Optional[time] = None,
     min_humidity: Optional[float] = None,
     max_humidity: Optional[float] = None,
 ):
     """Compute descriptive statistics (mean, stdev, min, max) for each sensor."""
     from sqlalchemy import text
 
-    moss_wheres, nm_wheres = [], []
+    moss_wheres, nm_wheres = list(MOSS_VALID_SQL), list(NON_MOSS_VALID_SQL)
     params: dict = {}
 
     if start_date is not None:
@@ -396,6 +469,15 @@ def get_analysis_descriptive_stats(
         moss_wheres.append("m.[timestamp] <= :end_dt")
         nm_wheres.append("n.[timestamp] <= :end_dt")
         params["end_dt"] = datetime.combine(end_date, time.max)
+
+    if start_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
 
     if min_humidity is not None:
         moss_wheres.append("m.outdoor_humidity >= :min_hum")
@@ -500,13 +582,15 @@ def get_analysis_diurnal(
     db: Session,
     start_date=None,
     end_date=None,
+    start_time: Optional[time] = None,
+    end_time: Optional[time] = None,
     min_humidity: Optional[float] = None,
     max_humidity: Optional[float] = None,
 ):
     """Average wall temps split by daytime (06-18) vs night (18-06)."""
     from sqlalchemy import text
 
-    moss_wheres, nm_wheres = [], []
+    moss_wheres, nm_wheres = list(MOSS_VALID_SQL), list(NON_MOSS_VALID_SQL)
     params: dict = {}
 
     if start_date is not None:
@@ -518,6 +602,15 @@ def get_analysis_diurnal(
         moss_wheres.append("m.[timestamp] <= :end_dt")
         nm_wheres.append("n.[timestamp] <= :end_dt")
         params["end_dt"] = datetime.combine(end_date, time.max)
+
+    if start_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
 
     if min_humidity is not None:
         moss_wheres.append("m.outdoor_humidity >= :min_hum")
@@ -582,13 +675,15 @@ def get_analysis_cooling(
     db: Session,
     start_date=None,
     end_date=None,
+    start_time: Optional[time] = None,
+    end_time: Optional[time] = None,
     min_humidity: Optional[float] = None,
     max_humidity: Optional[float] = None,
 ):
     """Compute cooling effect: outdoor temp minus wall temp."""
     from sqlalchemy import text
 
-    wheres = []
+    wheres = list(MOSS_VALID_SQL)
     params: dict = {}
 
     if start_date is not None:
@@ -597,6 +692,12 @@ def get_analysis_cooling(
     if end_date is not None:
         wheres.append("m.[timestamp] <= :end_dt")
         params["end_dt"] = datetime.combine(end_date, time.max)
+    if start_time is not None:
+        wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
     if min_humidity is not None:
         wheres.append("m.outdoor_humidity >= :min_hum")
         wheres.append("m.near_moss_humidity >= :min_hum")
@@ -627,7 +728,7 @@ def get_analysis_cooling(
         {where_sql}
     """)
 
-    nm_wheres = []
+    nm_wheres = list(NON_MOSS_VALID_SQL)
     nm_params: dict = {}
     if start_date is not None:
         nm_wheres.append("n.[timestamp] >= :start_dt")
@@ -635,6 +736,12 @@ def get_analysis_cooling(
     if end_date is not None:
         nm_wheres.append("n.[timestamp] <= :end_dt")
         nm_params["end_dt"] = datetime.combine(end_date, time.max)
+    if start_time is not None:
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        nm_params["start_tm"] = start_time
+    if end_time is not None:
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        nm_params["end_tm"] = end_time
 
     if min_humidity is not None:
         nm_wheres.append("n.near_non_moss_humidity >= :min_hum")
@@ -690,13 +797,15 @@ def get_analysis_humidity_buffering(
     db: Session,
     start_date=None,
     end_date=None,
+    start_time: Optional[time] = None,
+    end_time: Optional[time] = None,
     min_humidity: Optional[float] = None,
     max_humidity: Optional[float] = None,
 ):
     """Standard deviation of humidity readings for buffering comparison."""
     from sqlalchemy import text
 
-    moss_wheres, nm_wheres = [], []
+    moss_wheres, nm_wheres = list(MOSS_VALID_SQL), list(NON_MOSS_VALID_SQL)
     params: dict = {}
 
     if start_date is not None:
@@ -707,6 +816,15 @@ def get_analysis_humidity_buffering(
         moss_wheres.append("m.[timestamp] <= :end_dt")
         nm_wheres.append("n.[timestamp] <= :end_dt")
         params["end_dt"] = datetime.combine(end_date, time.max)
+
+    if start_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
     if min_humidity is not None:
         moss_wheres.append("m.outdoor_humidity >= :min_hum")
         moss_wheres.append("m.near_moss_humidity >= :min_hum")
@@ -757,13 +875,15 @@ def get_analysis_hourly_pattern(
     db: Session,
     start_date=None,
     end_date=None,
+    start_time: Optional[time] = None,
+    end_time: Optional[time] = None,
     min_humidity: Optional[float] = None,
     max_humidity: Optional[float] = None,
 ):
     """Average temperature by hour of day (0-23) for diurnal chart."""
     from sqlalchemy import text
 
-    moss_wheres, nm_wheres = [], []
+    moss_wheres, nm_wheres = list(MOSS_VALID_SQL), list(NON_MOSS_VALID_SQL)
     params: dict = {}
 
     if start_date is not None:
@@ -774,6 +894,15 @@ def get_analysis_hourly_pattern(
         moss_wheres.append("m.[timestamp] <= :end_dt")
         nm_wheres.append("n.[timestamp] <= :end_dt")
         params["end_dt"] = datetime.combine(end_date, time.max)
+
+    if start_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
     if min_humidity is not None:
         moss_wheres.append("m.outdoor_humidity >= :min_hum")
         moss_wheres.append("m.near_moss_humidity >= :min_hum")

@@ -149,6 +149,8 @@ class HourlyPatternRow(BaseModel):
     mossWall: Optional[float] = None
     nonMossWall: Optional[float] = None
     outdoor: Optional[float] = None
+    nearMossHumidity: Optional[float] = None
+    nearNonMossHumidity: Optional[float] = None
 
 
 class AnalysisResponse(BaseModel):

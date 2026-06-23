@@ -1,49 +1,227 @@
 # Urban Heat — Comparative Environmental Monitoring of Moss-Based Cooling
 
-IoT monitoring project that collects, stores, and compares environmental readings from two ESP32 nodes:
+An advanced IoT monitoring, analytics, and alerting ecosystem designed to measure, store, and compare the microclimate cooling and insulating performance of a moss-covered wall segment (green wall) against a dry control wall segment (non-moss building wall). 
 
-- `moss`
-- `non_moss`
+This project delivers high-frequency real-time sensor streams, utilizes a robust relational database schema on Microsoft SQL Server, serves a modern data API via FastAPI, provides an administrative Telegram bot with active health watchdog daemons, and hosts a sleek client-side analytical dashboard.
 
-## Project Structure
+---
 
-- `backend/` FastAPI + SQLAlchemy + MSSQL API
-- `frontend/` static dashboard (HTML, CSS, JavaScript)
-- `sketch/` ESP32 Arduino sketches
+## 🗺️ System Architecture
 
-## Run Backend
+The ecosystem consists of five core components working in unison:
 
+```mermaid
+flowchart TB
+    %% Nodes
+    subgraph Sensors ["🍃 Physical IoT Nodes"]
+        MNS["ESP32 (Moss Node)\n• Outdoor Temp/Hum (DHT22)\n• Near-Moss Temp/Hum (DHT22)\n• Wall Temp (DS18B20)\n• Infrared Surface (MLX90614)"]
+        NMS["ESP32 (Control Node)\n• Near-Control Temp/Hum (DHT22)\n• Wall Temp (DS18B20)\n• Infrared Surface (MLX90614)"]
+    end
+
+    subgraph API ["⚡ API Gateway (FastAPI)"]
+        Sanitizer["NaN Sanitizing Middleware\n(Intercepts float serialization errors)"]
+        Endpoints["REST API Endpoints\n(/api/data/moss, /api/data/non-moss...)"]
+    end
+
+    subgraph Database ["🗄️ Relational Engine"]
+        MSSQL[("Microsoft SQL Server (MSSQL)\n• iot_monitoring DB\n• Chronological Indices")]
+    end
+
+    subgraph Interface ["📊 User & Admin Access"]
+        Web["Client Web Dashboard\n(Chart.js, Dark Mode Theme)"]
+        Bot["Telegram Bot Daemon\n• Interactive commands\n• DB Auto-Backups\n• Active Watchdog Alerts"]
+    end
+
+    %% Connections
+    MNS -->|"HTTP POST (JSON Stream)"| Sanitizer
+    NMS -->|"HTTP POST (JSON Stream)"| Sanitizer
+    Sanitizer --> Endpoints
+    Endpoints -->|"SQLAlchemy ORM"| MSSQL
+    Web -->|"REST API (GET)"| Endpoints
+    Bot -->|"Raw pyodbc Queries"| MSSQL
+    MSSQL -->|"Outage Watchdog (60s timer)"| Bot
+    Bot -->|"Telegram Alerts"| Admins[("🚨 System Admins")]
+```
+
+---
+
+## 📦 Project Structure
+
+```bash
+eco-cooling_analyse-system/
+├── backend/                  # FastAPI Application, Database Schema, and Telegram Bot
+│   ├── app/
+│   │   ├── api/routes/       # Core REST Endpoints (Ingestion, Paginated History, Stats)
+│   │   ├── core/             # Environment Configuration and DB Engine Initialization
+│   │   ├── crud/             # SQL Alchemy Data Queries and Analytic Computations
+│   │   ├── models/           # Declarative DB Table Classes for MSSQL
+│   │   ├── schemas/          # Pydantic Ingestion / Serialization Contract Schemas
+│   │   ├── main.py           # Main Web Application Gateway & Nan-Sanitizer Middleware
+│   │   └── telegram_bot.py   # Telegram Bot Logic and Active Health Watchdog
+│   ├── .env.example          # Template for MSSQL, CORS, and Telegram settings
+│   ├── requirements.txt      # Backend Python Dependencies
+│   ├── schema.sql            # Core MSSQL Database and Index Initialization Script
+│   └── run_telegram_bot.py   # Startup Script for the Admin Telegram Service
+├── frontend/                 # Client Web Dashboard (HTML5, Vanilla CSS, JS with Chart.js)
+│   ├── assets/
+│   │   ├── css/styles.css    # Premium Responsive Dark-Themed Styling
+│   │   └── js/               # Page-Specific Interactive Visualization Logic
+│   ├── index.html            # Main Live Sensor Status and Trend Charts
+│   ├── history.html          # Historical Data Log Viewer
+│   ├── compare.html          # Side-By-Side Interactive Metrics Compare Panel
+│   ├── analysis.html         # Thermal Insulation and Diurnal Cycle Calculations
+│   ├── moss-effect.html      # Specialized Microclimate Buffering Visualizations
+│   └── export.html           # Structured Sensor Stream Exporter
+├── sketch/                   # Physical ESP32 Hardware Firmware (Arduino C++)
+│   ├── 1/1.ino               # Moss-Side Ingestion Node Firmware Code
+│   └── 2/2.ino               # Control-Side Ingestion Node Firmware Code
+└── moss_wall_report.pdf      # Detailed Comparative Analysis Research Document
+```
+
+---
+
+## 🛠️ Hardware Specification & Low-Power Cycle
+
+To guarantee extreme precision and prevent RF self-heating (where the ESP32's onboard Wi-Fi chip raises local ambient temperature readings), the firmware on both nodes executes an **isolated transmission cycle**:
+
+### Physical Node Sensors
+
+| Sensor Model | Metric Target | Node Placement | Read Protocol |
+| :--- | :--- | :--- | :--- |
+| **Adafruit MLX90614** | Contactless Surface Temperature | Infrared Field-of-View (FOV) on Wall | I2C (Pins 21, 22) |
+| **Dallas DS18B20** | Internal Structural Wall Temperature | Core Sub-surface Substrate | One-Wire (Dallas Bus) |
+| **DHT22 (AM2302)** | Microclimate Air Temperature & Humidity | Node Internal Ambient / Canopy Boundary | 1-Pin Digital Protocol |
+
+### Low-Power Operation Loop
+
+```mermaid
+stateDiagram-v2
+    [*] --> Wake
+    State Wake {
+        Direction TB
+        ESP_OFF: Wi-Fi Transmitter Disabled (RF Isolated)
+        Read_Sensors: Fetch DHT22, DS18B20, & MLX90614 metrics
+        Store_Buffer: Compile Reading Struct
+    }
+    Wake --> ConnectWiFi
+    State ConnectWiFi {
+        Direction TB
+        ESP_ON: Engage Wi-Fi Station Mode
+        Negotiate: Authenticate with Local AP
+    }
+    ConnectWiFi --> Transmit
+    State Transmit {
+        Direction TB
+        Post: Send HTTP POST JSON to FastAPI
+        Acknowledge: Verify Code 201 Response
+    }
+    Transmit --> Standby
+    State Standby {
+        Direction TB
+        Power_Down: Turn Off Wi-Fi Module Completely
+        Delay_Cycle: Execute High-Precision Standby Delay (60s)
+    }
+    Standby --> Wake
+```
+
+---
+
+## ⚡ Backend Technical Features
+
+### 🛡️ Real-Time NaN-Sanitizing Middleware
+When an ESP32 sensor experiences intermittent hardware errors (e.g. wire jitter), the standard Arduino float readings yield `NAN` or `Infinity`. When serialized to raw strings, this results in unquoted `"nan"` or `"inf"` literals, which fail standard RFC-8259 JSON parsers.
+Our FastAPI backend intercepts these payloads using raw HTTP byte stream middleware and sanitizes them into standard JSON `null` values before the parsing pipeline executes:
+```python
+_NAN_INF_RE = re.compile(r'"?(?:\bnan\b|-?\binf(?:inity)?\b)"?', re.IGNORECASE)
+
+@app.middleware("http")
+async def sanitize_nan_middleware(request: Request, call_next):
+    if request.method in ("POST", "PUT", "PATCH") and "application/json" in request.headers.get("content-type", ""):
+        raw_body = await request.body()
+        body_text = raw_body.decode("utf-8", errors="replace")
+        if _NAN_INF_RE.search(body_text):
+            sanitized_bytes = _NAN_INF_RE.sub("null", body_text).encode("utf-8")
+            request._receive = lambda: {"type": "http.request", "body": sanitized_bytes}
+            request._body = sanitized_bytes
+    return await call_next(request)
+```
+
+### 🤖 Telegram Command & Ingestion Watchdog Daemon
+The administrative Telegram bot manages system health, DB upkeep, and alerts administrators.
+* **Commands**:
+  * `/start` — Welcomes administrators and reveals their unique chat ID for secure config enrollment.
+  * `/latest` — Reads current data from MSSQL, computes the instantaneous contactless **surface cooling delta** (\(T_{Control} - T_{Moss}\)), and prints formatted statistics in IST.
+  * `/backup` — Triggers an active database BACKUP script to export `.bak` containers to host storage.
+* **Active Watchdog**:
+  Runs a background scheduler every 60 seconds. If either the `moss` or `non_moss` nodes fail to ingest fresh telemetry within `TELEGRAM_DATA_TIMEOUT_MINUTES` (defaults to 5 mins), the bot pushes real-time outage warnings to all enrolled chat IDs, ensuring physical node failures are discovered instantly.
+
+---
+
+## 🗄️ Database Setup (MSSQL)
+
+Configure your Microsoft SQL Server instance using the schema located in [backend/schema.sql](file:///c:/Users/keshaka/Documents/GitHub/eco-cooling_analyse-system/backend/schema.sql).
+
+### Table Schema Highlights
+* **`moss_data`**: Chronological log of ambient temperatures, humidity, moss microclimate conditions, moss surface infrared measurements, and structural wall temperatures.
+* **`non_moss_data`**: Chronological control data containing dry surface infrared measurements, adjacent air microclimates, and dry wall interior temperatures.
+* **Indices**: Clustered physical keys with primary non-clustered, high-performance chronological indices (`IX_moss_data_timestamp` and `IX_non_moss_data_timestamp`) to optimize high-speed range scans during client-side history queries.
+
+---
+
+## 🚀 Installation & Running
+
+### 1. Database Setup
+Ensure Microsoft SQL Server is running, then execute the schema initialization:
+```bash
+sqlcmd -S localhost -U sa -P YourStrongPasswordHere -i backend/schema.sql
+```
+
+### 2. Configure Environment Variables
+Copy `backend/.env.example` to `backend/.env` and adjust the variables:
+```bash
+cp backend/.env.example backend/.env
+```
+Ensure you set your database host credentials, your unique **Telegram Bot Token** (obtained from [@BotFather](https://t.me/BotFather)), and target **Telegram Chat IDs** for alerts.
+
+### 3. Install Backend Dependencies & Run
+Set up a Python virtual environment and run the FastAPI server:
 ```bash
 cd backend
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1   # On Windows PowerShell
 pip install -r requirements.txt
 
-# Create .env and set MSSQL credentials
-# Run schema: backend/schema.sql
-
+# Run the API server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+* **Interactive Swagger Interface**: `http://127.0.0.1:8000/docs`
+* **Alternate ReDoc Interface**: `http://127.0.0.1:8000/redoc`
 
-API docs:
+### 4. Run the Telegram Bot Daemon
+Open a separate terminal window and launch the background bot daemon:
+```bash
+cd backend
+.\.venv\Scripts\Activate.ps1
+python run_telegram_bot.py
+```
 
-- Swagger: http://127.0.0.1:8000/docs
-- ReDoc: http://127.0.0.1:8000/redoc
-
-## Run Frontend
-
+### 5. Launch the Web Dashboard
+Since the frontend client is a zero-dependency static web application, it can be hosted using any basic static HTTP server:
 ```bash
 cd frontend
 python -m http.server 5500
 ```
+Open `http://127.0.0.1:5500/index.html` in your web browser.
 
-Open: http://127.0.0.1:5500/index.html
+---
 
-## Main API Endpoints
+## 📊 Interactive Web Client Features
 
-- `POST /api/data/moss`
-- `POST /api/data/non-moss`
-- `GET /api/data/latest`
-- `GET /api/data/history?start=YYYY-MM-DD&end=YYYY-MM-DD`
-- `GET /api/data/history/paginated?start=YYYY-MM-DD&end=YYYY-MM-DD&page=1&per_page=30`
-- `GET /api/data/compare`
+The frontend client utilizes a high-contrast, premium dark mode styling tailored around **Vanilla CSS variables** and **Chart.js**.
+
+* **Live Dashboard (`index.html`)**: Features real-time responsive cards reflecting temperature, humidity, and wall statuses with synchronous rolling temporal graphs updating every 10 seconds.
+* **Historical Data Log (`history.html`)**: Employs query filters allowing users to parse database records across customizable granular intervals.
+* **Side-by-Side Comparison (`compare.html`)**: Contrasts moss and dry wall performance directly, demonstrating daily temperature fluctuations.
+* **Mathematical Analytics (`analysis.html`)**: Calculates active thermal characteristics, detailing the cooling delta trends and peak heat load reductions.
+* **The Moss Effect (`moss-effect.html`)**: Visually decomposes microclimate buffering, plotting humidity-buffering curves to illustrate evapotranspiration cooling.
+* **Structured Exporter (`export.html`)**: Packages selected sensor metrics into CSV data structures for downstream modeling in specialized scientific packages.

@@ -11,13 +11,31 @@ const charts = {};
 // Cached API response
 let analysisData = null;
 
-// ── Static reference data from the PDF report ────────────────────
-
-const T_TESTS = [
-  { comparison: "Wall Temp (°C)",         mossMean: null, nonMossMean: null, tStat: -11.351, pValue: "0.00e+00", sig: "p<0.001" },
-  { comparison: "Surface Temp (°C)",      mossMean: null, nonMossMean: null, tStat: -19.494, pValue: "0.00e+00", sig: "p<0.001" },
-  { comparison: "Near-Wall Humidity (%)", mossMean: null, nonMossMean: null, tStat: 4.996,   pValue: "6.00e-07", sig: "p<0.001" },
-];
+// ── Paired T-Test Helper ────────────────────────────────────────────
+function computePairedTTest(mossArr, nonMossArr) {
+  const diffs = [];
+  for (let i = 0; i < Math.min(mossArr.length, nonMossArr.length); i++) {
+    if (mossArr[i] != null && nonMossArr[i] != null) {
+      diffs.push(mossArr[i] - nonMossArr[i]);
+    }
+  }
+  if (diffs.length < 2) return { tStat: null, pValue: "--", sig: "--", diffs: [], meanDiff: null };
+  
+  const meanDiff = jStat.mean(diffs);
+  const stdDiff = jStat.stdev(diffs, true); // true for sample stdev
+  const n = diffs.length;
+  const tStat = meanDiff / (stdDiff / Math.sqrt(n));
+  
+  const pValueNum = 2 * (1 - jStat.studentt.cdf(Math.abs(tStat), n - 1));
+  const pValue = pValueNum < 1e-10 ? "0.00e+00" : pValueNum.toExponential(2);
+  
+  let sig = "n.s.";
+  if (pValueNum < 0.001) sig = "p<0.001";
+  else if (pValueNum < 0.01) sig = "p<0.01";
+  else if (pValueNum < 0.05) sig = "p<0.05";
+  
+  return { tStat, pValue, sig, diffs, meanDiff };
+}
 
 const KEY_FINDINGS_TEMPLATE = [
   { icon: "🌡", title: "Temperature Reduction", color: "#72d28f",
@@ -177,6 +195,9 @@ const ANALYSIS_CANVAS_TO_KEY = {
   humidityScatterChart: "humidityScatter",
   humidityBufferChart: "humidityBuffer",
   correlationChart: "correlation",
+  evapoScatterChart: "evapoScatter",
+  evapoBiChart: "evapoBi",
+  evapoHourlyChart: "evapoHourly",
 };
 
 function downloadChartPng(chartKey, filename) {
@@ -208,6 +229,64 @@ function downloadAllCharts() {
     downloadChartPng(chartKey, name);
   }
 }
+
+function downloadChartCsv(chartKey, filename) {
+  const chart = charts[chartKey];
+  if (!chart) return;
+  const data = chart.data;
+  let csvContent = "";
+  
+  const labels = data.labels || [];
+  if (labels.length > 0) {
+    const header = ["Label", ...data.datasets.map(d => `"${d.label || ''}"`)];
+    csvContent += header.join(",") + "\n";
+    
+    for (let i = 0; i < labels.length; i++) {
+      const row = [`"${labels[i]}"`];
+      for (const dataset of data.datasets) {
+        let val = dataset.data[i];
+        if (val !== null && val !== undefined) {
+          if (Array.isArray(val)) {
+            val = val.join(";");
+          } else if (typeof val === 'object' && val.x !== undefined && val.y !== undefined) {
+             val = `x:${val.x} y:${val.y}`;
+          }
+        } else {
+          val = "";
+        }
+        row.push(`"${val}"`);
+      }
+      csvContent += row.join(",") + "\n";
+    }
+  } else {
+    // For scatter/bubble charts without global labels
+    const maxLen = Math.max(...data.datasets.map(d => d.data.length));
+    csvContent += data.datasets.map(d => `"${d.label || ''}"`).join(",") + "\n";
+    for (let i = 0; i < maxLen; i++) {
+      const row = [];
+      for (const dataset of data.datasets) {
+        let val = dataset.data[i];
+        if (val !== null && val !== undefined) {
+          if (Array.isArray(val)) {
+            val = val.join(";");
+          } else if (typeof val === 'object' && val.x !== undefined && val.y !== undefined) {
+            val = `x:${val.x} y:${val.y}`;
+          }
+        } else {
+          val = "";
+        }
+        row.push(`"${val}"`);
+      }
+      csvContent += row.join(",") + "\n";
+    }
+  }
+
+  const link = document.createElement("a");
+  link.download = `${filename}.csv`;
+  link.href = "data:text/csv;charset=utf-8,%EF%BB%BF" + encodeURIComponent(csvContent);
+  link.click();
+}
+
 
 // ── Render functions ─────────────────────────────────────────────
 
@@ -261,6 +340,18 @@ function renderTTestTable() {
   const body = document.getElementById("tTestBody");
   if (!analysisData) { body.innerHTML = ""; return; }
 
+  const ts = analysisData.timeSeries;
+  const wallMoss = ts.map(r => r.mossWallTemp);
+  const wallNonMoss = ts.map(r => r.nonMossWallTemp);
+  const surfMoss = ts.map(r => r.mossSurfaceTemp);
+  const surfNonMoss = ts.map(r => r.nonMossSurfaceTemp);
+  const humMoss = ts.map(r => r.nearMossHumidity);
+  const humNonMoss = ts.map(r => r.nearNonMossHumidity);
+
+  const tWall = computePairedTTest(wallMoss, wallNonMoss);
+  const tSurf = computePairedTTest(surfMoss, surfNonMoss);
+  const tHum = computePairedTTest(humMoss, humNonMoss);
+
   // Populate t-test table with live means from descriptive stats
   const stats = analysisData.descriptiveStats;
   const mossWall = stats.find(s => s.sensor.includes("Moss Wall") && !s.sensor.includes("Non"));
@@ -271,9 +362,9 @@ function renderTTestTable() {
   const nearNonMossHum = stats.find(s => s.sensor.includes("Near Non-Moss Humidity"));
 
   const rows = [
-    { comparison: "Wall Temp (°C)", mossMean: mossWall?.mean, nonMossMean: nonMossWall?.mean, tStat: T_TESTS[0].tStat, pValue: T_TESTS[0].pValue, sig: T_TESTS[0].sig },
-    { comparison: "Surface Temp (°C)", mossMean: mossSurface?.mean, nonMossMean: nonMossSurface?.mean, tStat: T_TESTS[1].tStat, pValue: T_TESTS[1].pValue, sig: T_TESTS[1].sig },
-    { comparison: "Near-Wall Humidity (%)", mossMean: nearMossHum?.mean, nonMossMean: nearNonMossHum?.mean, tStat: T_TESTS[2].tStat, pValue: T_TESTS[2].pValue, sig: T_TESTS[2].sig },
+    { comparison: "Wall Temp (°C)", mossMean: mossWall?.mean, nonMossMean: nonMossWall?.mean, tStat: tWall.tStat, pValue: tWall.pValue, sig: tWall.sig },
+    { comparison: "Surface Temp (°C)", mossMean: mossSurface?.mean, nonMossMean: nonMossSurface?.mean, tStat: tSurf.tStat, pValue: tSurf.pValue, sig: tSurf.sig },
+    { comparison: "Near-Wall Humidity (%)", mossMean: nearMossHum?.mean, nonMossMean: nearNonMossHum?.mean, tStat: tHum.tStat, pValue: tHum.pValue, sig: tHum.sig },
   ];
 
   body.innerHTML = rows.map(row => `
@@ -281,7 +372,7 @@ function renderTTestTable() {
       <td>${row.comparison}</td>
       <td>${row.mossMean != null ? row.mossMean.toFixed(2) : "--"}</td>
       <td>${row.nonMossMean != null ? row.nonMossMean.toFixed(2) : "--"}</td>
-      <td>${row.tStat.toFixed(3)}</td>
+      <td>${row.tStat != null ? row.tStat.toFixed(3) : "--"}</td>
       <td>${row.pValue}</td>
       <td><span class="sig-badge">${row.sig}</span></td>
     </tr>`).join("");
@@ -296,33 +387,29 @@ function renderTTestChart() {
   const ts = analysisData.timeSeries;
   const defaults = getChartDefaults();
 
-  // Extract raw value arrays from time series
-  const mossWallArr = ts.map(r => r.mossWallTemp).filter(v => v != null);
-  const nonMossWallArr = ts.map(r => r.nonMossWallTemp).filter(v => v != null);
-  const mossSurfaceArr = ts.map(r => r.mossSurfaceTemp).filter(v => v != null);
-  const nonMossSurfaceArr = ts.map(r => r.nonMossSurfaceTemp).filter(v => v != null);
-  const mossHumArr = ts.map(r => r.nearMossHumidity).filter(v => v != null);
-  const nonMossHumArr = ts.map(r => r.nearNonMossHumidity).filter(v => v != null);
+  const tWall = computePairedTTest(ts.map(r => r.mossWallTemp), ts.map(r => r.nonMossWallTemp));
+  const tSurf = computePairedTTest(ts.map(r => r.mossSurfaceTemp), ts.map(r => r.nonMossSurfaceTemp));
+  const tHum = computePairedTTest(ts.map(r => r.nearMossHumidity), ts.map(r => r.nearNonMossHumidity));
 
-  // p-value labels from t-test constants
-  const pLabels = T_TESTS.map(t => {
-    const pNum = parseFloat(t.pValue);
-    const pStr = pNum === 0 ? "0.0000" : pNum.toFixed(4);
-    return `p=${pStr} ***`;
-  });
+  // p-value labels
+  const pLabels = [
+    `p=${tWall.pValue} (${tWall.sig})`,
+    `p=${tSurf.pValue} (${tSurf.sig})`,
+    `p=${tHum.pValue} (${tHum.sig})`
+  ];
 
-  function createBoxPlot(canvasId, chartKey, title, subtitle, mossData, nonMossData, yLabel) {
+  function createBoxPlot(canvasId, chartKey, title, subtitle, diffData, yLabel) {
     const ctx = document.getElementById(canvasId).getContext("2d");
 
     charts[chartKey] = new Chart(ctx, {
       type: "boxplot",
       data: {
-        labels: ["Moss", "Non-Moss"],
+        labels: ["Paired Difference (Moss - Non-Moss)"],
         datasets: [{
           label: yLabel,
-          data: [mossData, nonMossData],
-          backgroundColor: ["rgba(56,118,71,0.8)", "rgba(205,154,91,0.8)"],
-          borderColor: ["#2d6b3f", "#b8863a"],
+          data: [diffData],
+          backgroundColor: ["rgba(90,200,224,0.8)"],
+          borderColor: ["#3b8a9c"],
           borderWidth: 1.5,
           outlierBackgroundColor: "#1a1a2e",
           outlierBorderColor: "#555",
@@ -374,9 +461,9 @@ function renderTTestChart() {
     });
   }
 
-  createBoxPlot("boxplotWallTemp", "boxplotWall", "Wall Temp", pLabels[0], mossWallArr, nonMossWallArr, "Wall Temp (°C)");
-  createBoxPlot("boxplotSurfaceTemp", "boxplotSurface", "Surface Temp", pLabels[1], mossSurfaceArr, nonMossSurfaceArr, "Surface Temp (°C)");
-  createBoxPlot("boxplotHumidity", "boxplotHumidity", "Humidity", pLabels[2], mossHumArr, nonMossHumArr, "Humidity (%)");
+  createBoxPlot("boxplotWallTemp", "boxplotWall", "Wall Temp Difference", pLabels[0], tWall.diffs, "Diff (°C)");
+  createBoxPlot("boxplotSurfaceTemp", "boxplotSurface", "Surface Temp Difference", pLabels[1], tSurf.diffs, "Diff (°C)");
+  createBoxPlot("boxplotHumidity", "boxplotHumidity", "Humidity Difference", pLabels[2], tHum.diffs, "Diff (%)");
 }
 
 function renderCoolingCards() {
@@ -569,7 +656,7 @@ function renderCoolingAdvantageChart() {
       },
       scales: {
         ...defaults.scales,
-        x: { ...defaults.scales.x, ticks: { ...defaults.scales.x.ticks, maxTicksLimit: 14 } },
+        x: { ...defaults.scales.x },
         y: { ...defaults.scales.y, title: { display: true, text: "Temp Advantage (°C)", color: "#aebcae" } },
       },
     },
@@ -797,7 +884,7 @@ function renderTimeSeriesCharts() {
       ...defaults,
       scales: {
         ...defaults.scales,
-        x: { ...defaults.scales.x, ticks: { ...defaults.scales.x.ticks, maxTicksLimit: 16 } },
+        x: { ...defaults.scales.x },
         y: { ...defaults.scales.y, title: { display: true, text: "Temperature (°C)", color: "#aebcae" } },
       },
     },
@@ -821,7 +908,7 @@ function renderTimeSeriesCharts() {
       ...defaults,
       scales: {
         ...defaults.scales,
-        x: { ...defaults.scales.x, ticks: { ...defaults.scales.x.ticks, maxTicksLimit: 16 } },
+        x: { ...defaults.scales.x },
         y: { ...defaults.scales.y, title: { display: true, text: "Humidity (%)", color: "#aebcae" }, min: 40, max: 100 },
       },
     },
@@ -918,6 +1005,202 @@ function renderCorrelationChart() {
   });
 }
 
+function renderEvapoScatter() {
+  destroyChart("evapoScatter");
+  if (!analysisData) return;
+  const ctx = document.getElementById("evapoScatterChart").getContext("2d");
+  const defaults = getChartDefaults();
+  const ts = analysisData.timeSeries;
+
+  const dataPoints = [];
+  for (const row of ts) {
+    if (row.nearMossHumidity != null && row.nearNonMossHumidity != null && row.mossWallTemp != null && row.nonMossWallTemp != null) {
+      const humDiff = row.nearMossHumidity - row.nearNonMossHumidity;
+      const tempDiff = row.nonMossWallTemp - row.mossWallTemp; // positive means moss is cooler
+      dataPoints.push({ x: humDiff, y: tempDiff });
+    }
+  }
+
+  // Linear regression line
+  let n = dataPoints.length, sx = 0, sy = 0, sxy = 0, sx2 = 0;
+  for (const p of dataPoints) {
+    sx += p.x; sy += p.y; sxy += p.x * p.y; sx2 += p.x * p.x;
+  }
+  const m = n > 0 ? (n * sxy - sx * sy) / (n * sx2 - sx * sx) : 0;
+  const b = n > 0 ? (sy - m * sx) / n : 0;
+  
+  const minX = Math.min(...dataPoints.map(p => p.x));
+  const maxX = Math.max(...dataPoints.map(p => p.x));
+  const linePoints = n > 0 ? [{ x: minX, y: m * minX + b }, { x: maxX, y: m * maxX + b }] : [];
+
+  charts.evapoScatter = new Chart(ctx, {
+    type: "scatter",
+    data: {
+      datasets: [
+        {
+          label: "Observed Pairs",
+          data: dataPoints,
+          backgroundColor: "rgba(90, 200, 224, 0.4)",
+          borderColor: "#5ac8e0",
+          borderWidth: 1,
+          pointRadius: 3,
+        },
+        {
+          type: "line",
+          label: "Regression Line",
+          data: linePoints,
+          borderColor: "#f0b16f",
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+        }
+      ],
+    },
+    options: {
+      ...defaults,
+      scales: {
+        ...defaults.scales,
+        x: {
+          ...defaults.scales.x,
+          title: { display: true, text: "Humidity diff: moss - non-moss (%RH)", color: "#aebcae" },
+        },
+        y: {
+          ...defaults.scales.y,
+          title: { display: true, text: "Temp diff: non-moss - moss (°C)", color: "#aebcae" },
+        },
+      },
+    },
+  });
+}
+
+function renderEvapoBi() {
+  destroyChart("evapoBi");
+  if (!analysisData) return;
+  const ctx = document.getElementById("evapoBiChart").getContext("2d");
+  const defaults = getChartDefaults();
+  const hb = analysisData.humidityBuffering;
+
+  const outdoor = hb.find(h => h.location.toLowerCase().includes("outdoor"));
+  if (!outdoor || outdoor.stdDev === 0) return;
+
+  const labels = [];
+  const stdDevData = [];
+  const biData = [];
+
+  for (const item of hb) {
+    labels.push(item.location);
+    stdDevData.push(item.stdDev);
+    const bi = Math.max(0, 1 - (item.stdDev / outdoor.stdDev));
+    biData.push(bi);
+  }
+
+  charts.evapoBi = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          type: "line",
+          label: "Humidity Buffering Index",
+          data: biData,
+          borderColor: "#f0b16f",
+          backgroundColor: "#f0b16f",
+          borderWidth: 2,
+          yAxisID: "yBI",
+          pointRadius: 5,
+        },
+        {
+          type: "bar",
+          label: "Humidity std dev (%)",
+          data: stdDevData,
+          backgroundColor: "rgba(114, 210, 143, 0.5)",
+          borderColor: "#72d28f",
+          borderWidth: 1,
+          yAxisID: "yStd",
+        }
+      ],
+    },
+    options: {
+      ...defaults,
+      scales: {
+        ...defaults.scales,
+        x: { ...defaults.scales.x },
+        yStd: {
+          ...defaults.scales.y,
+          position: "right",
+          title: { display: true, text: "RH std dev (%)", color: "#aebcae" },
+          grid: { drawOnChartArea: false },
+        },
+        yBI: {
+          ...defaults.scales.y,
+          position: "left",
+          title: { display: true, text: "Buffering Index (0-1)", color: "#aebcae" },
+          min: 0,
+          max: 1.0,
+        },
+      },
+    },
+  });
+}
+
+function renderEvapoHourly() {
+  destroyChart("evapoHourly");
+  if (!analysisData) return;
+  const ctx = document.getElementById("evapoHourlyChart").getContext("2d");
+  const defaults = getChartDefaults();
+  const hData = analysisData.hourlyPattern;
+
+  const labels = hData.map(r => `${r.hour}:00`);
+  const humDiff = hData.map(r => r.nearMossHumidity - r.nearNonMossHumidity);
+  const tempDiff = hData.map(r => r.nonMossWall - r.mossWall);
+
+  charts.evapoHourly = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: "Humidity diff: moss - non-moss (%)",
+          data: humDiff,
+          borderColor: "#72d28f",
+          backgroundColor: "rgba(114, 210, 143, 0.1)",
+          borderWidth: 2,
+          yAxisID: "yHum",
+          tension: 0.4,
+          fill: true,
+        },
+        {
+          label: "Temp diff: non-moss - moss (°C)",
+          data: tempDiff,
+          borderColor: "#f0b16f",
+          borderWidth: 2,
+          borderDash: [5, 5],
+          yAxisID: "yTemp",
+          tension: 0.4,
+        }
+      ],
+    },
+    options: {
+      ...defaults,
+      scales: {
+        ...defaults.scales,
+        x: { ...defaults.scales.x },
+        yHum: {
+          ...defaults.scales.y,
+          position: "left",
+          title: { display: true, text: "RH diff (%)", color: "#aebcae" },
+        },
+        yTemp: {
+          ...defaults.scales.y,
+          position: "right",
+          title: { display: true, text: "Temp diff (°C)", color: "#aebcae" },
+          grid: { drawOnChartArea: false },
+        },
+      },
+    },
+  });
+}
+
 function renderFindings() {
   const grid = document.getElementById("findingsGrid");
   if (!analysisData) { grid.innerHTML = ""; return; }
@@ -952,6 +1235,9 @@ function renderAll() {
   renderHumidityBufferChart();
   renderTimeSeriesCharts();
   renderCorrelationChart();
+  renderEvapoScatter();
+  renderEvapoBi();
+  renderEvapoHourly();
   renderFindings();
 }
 
@@ -1005,6 +1291,19 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       downloadChartPng(chartKey, name);
+    });
+  });
+
+  document.querySelectorAll(".analysis-dl-csv-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const canvasId = btn.dataset.chart;
+      const chartKey = ANALYSIS_CANVAS_TO_KEY[canvasId];
+      const name = btn.dataset.name || canvasId;
+      if (!chartKey || !charts[chartKey]) {
+        alert("Please wait for data to load first.");
+        return;
+      }
+      downloadChartCsv(chartKey, name);
     });
   });
 });

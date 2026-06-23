@@ -10,35 +10,35 @@ from app.schemas.data import MossDataCreate, NonMossDataCreate
 
 
 MOSS_VALID_CONDITIONS = [
-    MossData.outdoor_temp >= 0,
-    MossData.outdoor_humidity >= 0,
-    MossData.moss_surface_temp >= 0,
-    MossData.near_moss_temp >= 0,
-    MossData.near_moss_humidity >= 0,
-    MossData.wall_temp >= 0,
+    MossData.outdoor_temp >= 1, MossData.outdoor_temp <= 100,
+    MossData.outdoor_humidity >= 1, MossData.outdoor_humidity <= 100,
+    MossData.moss_surface_temp >= 1, MossData.moss_surface_temp <= 100,
+    MossData.near_moss_temp >= 1, MossData.near_moss_temp <= 100,
+    MossData.near_moss_humidity >= 1, MossData.near_moss_humidity <= 100,
+    MossData.wall_temp >= 1, MossData.wall_temp <= 100,
 ]
 
 NON_MOSS_VALID_CONDITIONS = [
-    NonMossData.non_moss_surface_temp >= 0,
-    NonMossData.near_non_moss_temp >= 0,
-    NonMossData.near_non_moss_humidity >= 0,
-    NonMossData.wall_temp >= 0,
+    NonMossData.non_moss_surface_temp >= 1, NonMossData.non_moss_surface_temp <= 100,
+    NonMossData.near_non_moss_temp >= 1, NonMossData.near_non_moss_temp <= 100,
+    NonMossData.near_non_moss_humidity >= 1, NonMossData.near_non_moss_humidity <= 100,
+    NonMossData.wall_temp >= 1, NonMossData.wall_temp <= 100,
 ]
 
 MOSS_VALID_SQL = [
-    "m.outdoor_temp >= 0",
-    "m.outdoor_humidity >= 0",
-    "m.moss_surface_temp >= 0",
-    "m.near_moss_temp >= 0",
-    "m.near_moss_humidity >= 0",
-    "m.wall_temp >= 0",
+    "m.outdoor_temp >= 1", "m.outdoor_temp <= 100",
+    "m.outdoor_humidity >= 1", "m.outdoor_humidity <= 100",
+    "m.moss_surface_temp >= 1", "m.moss_surface_temp <= 100",
+    "m.near_moss_temp >= 1", "m.near_moss_temp <= 100",
+    "m.near_moss_humidity >= 1", "m.near_moss_humidity <= 100",
+    "m.wall_temp >= 1", "m.wall_temp <= 100",
 ]
 
 NON_MOSS_VALID_SQL = [
-    "n.non_moss_surface_temp >= 0",
-    "n.near_non_moss_temp >= 0",
-    "n.near_non_moss_humidity >= 0",
-    "n.wall_temp >= 0",
+    "n.non_moss_surface_temp >= 1", "n.non_moss_surface_temp <= 100",
+    "n.near_non_moss_temp >= 1", "n.near_non_moss_temp <= 100",
+    "n.near_non_moss_humidity >= 1", "n.near_non_moss_humidity <= 100",
+    "n.wall_temp >= 1", "n.wall_temp <= 100",
 ]
 
 
@@ -930,7 +930,8 @@ def get_analysis_hourly_pattern(
         SELECT
             DATEPART(HOUR, m.[timestamp]) AS hour_of_day,
             AVG(CASE WHEN m.wall_temp > 1 THEN m.wall_temp END) AS avg_moss_wall,
-            AVG(CASE WHEN m.outdoor_temp > 1 THEN m.outdoor_temp END) AS avg_outdoor
+            AVG(CASE WHEN m.outdoor_temp > 1 THEN m.outdoor_temp END) AS avg_outdoor,
+            AVG(CASE WHEN m.near_moss_humidity > 1 THEN m.near_moss_humidity END) AS avg_near_moss_humidity
         FROM dbo.moss_data m
         {moss_where}
         GROUP BY DATEPART(HOUR, m.[timestamp])
@@ -940,7 +941,8 @@ def get_analysis_hourly_pattern(
     nm_sql = text(f"""
         SELECT
             DATEPART(HOUR, n.[timestamp]) AS hour_of_day,
-            AVG(CASE WHEN n.wall_temp > 1 THEN n.wall_temp END) AS avg_non_moss_wall
+            AVG(CASE WHEN n.wall_temp > 1 THEN n.wall_temp END) AS avg_non_moss_wall,
+            AVG(CASE WHEN n.near_non_moss_humidity > 1 THEN n.near_non_moss_humidity END) AS avg_near_non_moss_humidity
         FROM dbo.non_moss_data n
         {nm_where}
         GROUP BY DATEPART(HOUR, n.[timestamp])
@@ -950,8 +952,9 @@ def get_analysis_hourly_pattern(
     moss_rows = {r["hour_of_day"]: r for r in db.execute(moss_sql, params).mappings().all()}
     nm_rows = {r["hour_of_day"]: r for r in db.execute(nm_sql, params).mappings().all()}
 
+    all_hours = sorted(set(moss_rows.keys()).union(nm_rows.keys()))
     hours = []
-    for h in range(24):
+    for h in all_hours:
         m = moss_rows.get(h)
         n = nm_rows.get(h)
         hours.append({
@@ -959,6 +962,8 @@ def get_analysis_hourly_pattern(
             "mossWall": _safe_round(m["avg_moss_wall"]) if m else None,
             "nonMossWall": _safe_round(n["avg_non_moss_wall"]) if n else None,
             "outdoor": _safe_round(m["avg_outdoor"]) if m else None,
+            "nearMossHumidity": _safe_round(m["avg_near_moss_humidity"]) if m else None,
+            "nearNonMossHumidity": _safe_round(n["avg_near_non_moss_humidity"]) if n else None,
         })
 
     return hours

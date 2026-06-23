@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="assets/css/styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@sgratzl/chartjs-chart-boxplot"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js"></script>
     <script src="assets/js/common.js" defer></script>
     <script src="assets/js/analysis.js" defer></script>
   </head>
@@ -125,15 +126,15 @@
         <div class="grid charts sensor-charts">
           <article class="panel chart-card">
             <div class="chart-card-header">
-              <h3>Temperature Overview</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="timeSeriesTempChart" data-name="analysis_temperature_overview">⬇ PNG</button>
+              <h3>Hourly Temperature Overview</h3>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="timeSeriesTempChart" data-name="analysis_temperature_overview">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="timeSeriesTempChart" data-name="analysis_temperature_overview">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="timeSeriesTempChart"></canvas></div>
           </article>
           <article class="panel chart-card">
             <div class="chart-card-header">
-              <h3>Humidity Overview</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="timeSeriesHumidityChart" data-name="analysis_humidity_overview">⬇ PNG</button>
+              <h3>Hourly Humidity Overview</h3>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="timeSeriesHumidityChart" data-name="analysis_humidity_overview">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="timeSeriesHumidityChart" data-name="analysis_humidity_overview">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="timeSeriesHumidityChart"></canvas></div>
           </article>
@@ -145,7 +146,7 @@
         <div class="panel-header">
           <div>
             <h2><span class="section-num">3</span> Moss vs Non-Moss Comparison (t-tests)</h2>
-            <p class="muted">Independent two-sample t-test results confirming statistically significant differences.</p>
+            <p class="muted">Paired t-test results confirming statistically significant differences.</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -167,21 +168,21 @@
           <article class="panel chart-card">
             <div class="chart-card-header">
               <h3>Wall Temp Box Plot</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="boxplotWallTemp" data-name="analysis_boxplot_wall_temp">⬇ PNG</button>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="boxplotWallTemp" data-name="analysis_boxplot_wall_temp">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="boxplotWallTemp" data-name="analysis_boxplot_wall_temp">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="boxplotWallTemp"></canvas></div>
           </article>
           <article class="panel chart-card">
             <div class="chart-card-header">
               <h3>Surface Temp Box Plot</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="boxplotSurfaceTemp" data-name="analysis_boxplot_surface_temp">⬇ PNG</button>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="boxplotSurfaceTemp" data-name="analysis_boxplot_surface_temp">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="boxplotSurfaceTemp" data-name="analysis_boxplot_surface_temp">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="boxplotSurfaceTemp"></canvas></div>
           </article>
           <article class="panel chart-card">
             <div class="chart-card-header">
               <h3>Humidity Box Plot</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="boxplotHumidity" data-name="analysis_boxplot_humidity">⬇ PNG</button>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="boxplotHumidity" data-name="analysis_boxplot_humidity">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="boxplotHumidity" data-name="analysis_boxplot_humidity">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="boxplotHumidity"></canvas></div>
           </article>
@@ -206,14 +207,14 @@
           <article class="panel chart-card">
             <div class="chart-card-header">
               <h3>Distribution of Cooling Effect</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="coolingHistogramChart" data-name="analysis_cooling_histogram">⬇ PNG</button>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="coolingHistogramChart" data-name="analysis_cooling_histogram">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="coolingHistogramChart" data-name="analysis_cooling_histogram">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="coolingHistogramChart"></canvas></div>
           </article>
           <article class="panel chart-card">
             <div class="chart-card-header">
-              <h3>Moss Cooling Advantage Over Time</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="coolingAdvantageChart" data-name="analysis_cooling_advantage">⬇ PNG</button>
+              <h3>Hourly Moss Cooling Advantage</h3>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="coolingAdvantageChart" data-name="analysis_cooling_advantage">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="coolingAdvantageChart" data-name="analysis_cooling_advantage">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="coolingAdvantageChart"></canvas></div>
           </article>
@@ -245,14 +246,14 @@
           <article class="panel chart-card">
             <div class="chart-card-header">
               <h3>Diurnal Temperature Pattern</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="diurnalChart" data-name="analysis_diurnal_pattern">⬇ PNG</button>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="diurnalChart" data-name="analysis_diurnal_pattern">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="diurnalChart" data-name="analysis_diurnal_pattern">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="diurnalChart"></canvas></div>
           </article>
           <article class="panel chart-card">
             <div class="chart-card-header">
               <h3>Hourly Average Temperatures</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="hourlyChart" data-name="analysis_hourly_temperatures">⬇ PNG</button>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="hourlyChart" data-name="analysis_hourly_temperatures">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="hourlyChart" data-name="analysis_hourly_temperatures">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="hourlyChart"></canvas></div>
           </article>
@@ -282,15 +283,15 @@
         <div class="grid charts sensor-charts" style="margin-top:1rem;">
           <article class="panel chart-card">
             <div class="chart-card-header">
-              <h3>Near-Wall vs Outdoor Humidity</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="humidityScatterChart" data-name="analysis_humidity_scatter">⬇ PNG</button>
+              <h3>Hourly Near-Wall vs Outdoor Humidity</h3>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="humidityScatterChart" data-name="analysis_humidity_scatter">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="humidityScatterChart" data-name="analysis_humidity_scatter">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="humidityScatterChart"></canvas></div>
           </article>
           <article class="panel chart-card">
             <div class="chart-card-header">
               <h3>Humidity Variability</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="humidityBufferChart" data-name="analysis_humidity_variability">⬇ PNG</button>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="humidityBufferChart" data-name="analysis_humidity_variability">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="humidityBufferChart" data-name="analysis_humidity_variability">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="humidityBufferChart"></canvas></div>
           </article>
@@ -312,18 +313,56 @@
           <article class="panel chart-card">
             <div class="chart-card-header">
               <h3>Correlation Matrix</h3>
-              <button type="button" class="btn-export-single analysis-dl-btn" data-chart="correlationChart" data-name="analysis_correlation_matrix">⬇ PNG</button>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="correlationChart" data-name="analysis_correlation_matrix">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="correlationChart" data-name="analysis_correlation_matrix">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="correlationChart"></canvas></div>
           </article>
         </div>
       </section>
 
-      <!-- ── 8. Key Findings ── -->
+      <!-- ── 8. Evapotranspiration Evidence ── -->
+      <section class="section panel fade-in" id="evapoEvidenceSection">
+        <div class="panel-header">
+          <div>
+            <h2><span class="section-num">8</span> Evapotranspiration Evidence</h2>
+            <p class="muted">Statistical evidence linking humidity buffering to temperature reduction.</p>
+          </div>
+        </div>
+        <div class="grid charts sensor-charts" style="margin-top:1rem; grid-template-columns: 1fr;">
+          <!-- Evidence 1 -->
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Evapotranspiration Correlation</h3>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="evapoScatterChart" data-name="analysis_evapo_scatter">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="evapoScatterChart" data-name="analysis_evapo_scatter">⬇ CSV</button></div>
+            </div>
+            <div class="chart-wrap"><canvas id="evapoScatterChart"></canvas></div>
+          </article>
+          
+          <!-- Evidence 2 -->
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Humidity Buffering Index (BI)</h3>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="evapoBiChart" data-name="analysis_evapo_bi">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="evapoBiChart" data-name="analysis_evapo_bi">⬇ CSV</button></div>
+            </div>
+            <div class="chart-wrap"><canvas id="evapoBiChart"></canvas></div>
+          </article>
+          
+          <!-- Evidence 3 -->
+          <article class="panel chart-card">
+            <div class="chart-card-header">
+              <h3>Hourly Tracking</h3>
+              <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="evapoHourlyChart" data-name="analysis_evapo_hourly">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="evapoHourlyChart" data-name="analysis_evapo_hourly">⬇ CSV</button></div>
+            </div>
+            <div class="chart-wrap"><canvas id="evapoHourlyChart"></canvas></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── 9. Key Findings ── -->
       <section class="section panel panel-findings fade-in" id="findingsSection">
         <div class="panel-header">
           <div>
-            <h2><span class="section-num">8</span> Key Findings</h2>
+            <h2><span class="section-num">9</span> Key Findings</h2>
             <p class="muted">Summary of major results from the analysis.</p>
           </div>
         </div>

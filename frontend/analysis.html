@@ -37,7 +37,7 @@
       <section class="hero fade-in">
         <div>
           <h1>Analysis Report</h1>
-          <p>Statistical analysis of moss-based eco-cooling system performance — descriptive stats, t-tests, cooling effects, diurnal patterns &amp; more.</p>
+          <p>Statistical analysis of moss-based Urban Heat cooling system performance — descriptive stats, t-tests, cooling effects, diurnal patterns &amp; more.</p>
         </div>
         <div class="muted" style="font-size:0.82rem;">Source: environment_history CSV</div>
       </section>
@@ -287,6 +287,9 @@
               <div class="chart-export-group" style="display:flex;gap:0.5rem;"><button type="button" class="btn-export-single analysis-dl-btn" data-chart="humidityScatterChart" data-name="analysis_humidity_scatter">⬇ PNG</button><button type="button" class="btn-export-single analysis-dl-csv-btn" data-chart="humidityScatterChart" data-name="analysis_humidity_scatter">⬇ CSV</button></div>
             </div>
             <div class="chart-wrap"><canvas id="humidityScatterChart"></canvas></div>
+            <div class="pearson-cards" id="humidityScatterPearson">
+              <!-- Populated by JS -->
+            </div>
           </article>
           <article class="panel chart-card">
             <div class="chart-card-header">
@@ -309,7 +312,22 @@
         <div class="analysis-note note-info">
           <strong>ℹ Note:</strong> "Moss Wall" correlates near zero with everything else (0.03 to 0.09, one value −0.04), while every other temperature pair correlates strongly (0.92–0.98). A sensor measuring the same physical process should track them — near-zero correlation is evidence the series is dominated by noise/dropouts.
         </div>
+        <div class="correlation-matrix-wrap" style="margin-top:1rem;">
+          <table class="correlation-matrix" id="correlationMatrix">
+            <thead id="correlationMatrixHead"></thead>
+            <tbody id="correlationMatrixBody"></tbody>
+          </table>
+        </div>
+        <div class="corr-legend" id="correlationLegend">
+          <span class="corr-legend-item"><span class="corr-legend-swatch" style="background:rgba(114,210,143,0.25);"></span> 1.00 (self)</span>
+          <span class="corr-legend-item"><span class="corr-legend-swatch" style="background:rgba(114,210,143,0.22);"></span> Strong +ve (≥ 0.7)</span>
+          <span class="corr-legend-item"><span class="corr-legend-swatch" style="background:rgba(114,210,143,0.12);"></span> Moderate +ve (0.4–0.7)</span>
+          <span class="corr-legend-item"><span class="corr-legend-swatch" style="background:rgba(150,150,150,0.1);"></span> Weak (−0.4 to 0.4)</span>
+          <span class="corr-legend-item"><span class="corr-legend-swatch" style="background:rgba(248,113,113,0.12);"></span> Moderate −ve (−0.7 to −0.4)</span>
+          <span class="corr-legend-item"><span class="corr-legend-swatch" style="background:rgba(248,113,113,0.22);"></span> Strong −ve (≤ −0.7)</span>
+        </div>
         <div class="grid charts sensor-charts" style="margin-top:1rem;">
+
           <article class="panel chart-card">
             <div class="chart-card-header">
               <h3>Correlation Matrix</h3>

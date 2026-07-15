@@ -801,3 +801,196 @@ input[type="time"]:focus {
     align-self: flex-end;
   }
 }
+
+/* ── Correlation Matrix Table ──────────────────────────────────────── */
+
+.correlation-matrix-wrap {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.correlation-matrix {
+  width: auto;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.82rem;
+}
+
+.correlation-matrix th,
+.correlation-matrix td {
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  padding: 0.55rem 0.65rem;
+  text-align: center;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.correlation-matrix th {
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.correlation-matrix th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--surface-soft);
+}
+
+.correlation-matrix td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.correlation-matrix td:last-child,
+.correlation-matrix th:last-child {
+  border-right: none;
+}
+
+.correlation-matrix tr:last-child td {
+  border-bottom: none;
+}
+
+.correlation-matrix tbody tr:hover td {
+  background: rgba(114, 210, 143, 0.06);
+}
+
+.correlation-matrix tbody tr:hover td:first-child {
+  background: color-mix(in srgb, var(--brand) 10%, var(--surface-soft));
+}
+
+.corr-cell {
+  font-weight: 600;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  border-radius: 6px;
+  min-width: 52px;
+}
+
+.corr-cell.corr-self {
+  background: rgba(114, 210, 143, 0.25);
+  color: #72d28f;
+}
+
+.corr-cell.corr-strong-pos {
+  background: rgba(114, 210, 143, 0.22);
+  color: #8be0a5;
+}
+
+.corr-cell.corr-mod-pos {
+  background: rgba(114, 210, 143, 0.12);
+  color: #72d28f;
+}
+
+.corr-cell.corr-weak {
+  background: rgba(150, 150, 150, 0.1);
+  color: #999;
+}
+
+.corr-cell.corr-mod-neg {
+  background: rgba(248, 113, 113, 0.12);
+  color: #f87171;
+}
+
+.corr-cell.corr-strong-neg {
+  background: rgba(248, 113, 113, 0.22);
+  color: #ff8a8a;
+}
+
+.corr-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface-soft);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.corr-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.corr-legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Pearson Correlation Value Card ──────────────────────────────── */
+
+.pearson-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.pearson-card {
+  flex: 1;
+  min-width: 140px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  text-align: center;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pearson-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.pearson-r-value {
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  color: #5ac8e0;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.pearson-r-value.r-negative {
+  color: #f87171;
+}
+
+.pearson-r-value.r-weak {
+  color: #aebcae;
+}
+
+.pearson-r-label {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.pearson-r-sublabel {
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  opacity: 0.7;
+}

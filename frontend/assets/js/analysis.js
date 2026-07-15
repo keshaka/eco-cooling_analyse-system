@@ -821,7 +821,57 @@ function renderHumidityScatterChart() {
       },
     },
   });
+
+  // ── Render Pearson Correlation Cards ──────────────────────────────
+  function pearsonFromPoints(points) {
+    const n = points.length;
+    if (n < 3) return null;
+    let sx = 0, sy = 0, sxy = 0, sx2 = 0, sy2 = 0;
+    for (const p of points) { sx += p.x; sy += p.y; sxy += p.x * p.y; sx2 += p.x * p.x; sy2 += p.y * p.y; }
+    const num = n * sxy - sx * sy;
+    const den = Math.sqrt((n * sx2 - sx * sx) * (n * sy2 - sy * sy));
+    return den === 0 ? null : num / den;
+  }
+
+  function rColorClass(r) {
+    if (r === null) return "";
+    if (r < 0) return "r-negative";
+    if (Math.abs(r) < 0.3) return "r-weak";
+    return "";
+  }
+
+  function rStrength(r) {
+    if (r === null) return "Insufficient data";
+    const abs = Math.abs(r);
+    const dir = r >= 0 ? "positive" : "negative";
+    if (abs >= 0.9) return `Very strong ${dir} correlation`;
+    if (abs >= 0.7) return `Strong ${dir} correlation`;
+    if (abs >= 0.5) return `Moderate ${dir} correlation`;
+    if (abs >= 0.3) return `Weak ${dir} correlation`;
+    return "Very weak / no correlation";
+  }
+
+  const rMoss    = pearsonFromPoints(mossPoints);
+  const rNonMoss = pearsonFromPoints(nonMossPoints);
+
+  const pearsonContainer = document.getElementById("humidityScatterPearson");
+  if (pearsonContainer) {
+    const makeCard = (r, label, sublabel) => {
+      const cls = rColorClass(r);
+      const val = r !== null ? r.toFixed(3) : "--";
+      return `
+        <div class="pearson-card">
+          <div class="pearson-r-value ${cls}">${val}</div>
+          <div class="pearson-r-label">${label}</div>
+          <div class="pearson-r-sublabel">${sublabel}</div>
+        </div>`;
+    };
+    pearsonContainer.innerHTML =
+      makeCard(rMoss,    "Pearson Correlation", `Near-Moss vs Outdoor · ${rStrength(rMoss)}`) +
+      makeCard(rNonMoss, "Pearson Correlation", `Near-Non-Moss vs Outdoor · ${rStrength(rNonMoss)}`);
+  }
 }
+
 
 function renderHumidityBufferChart() {
   destroyChart("humidityBuffer");
@@ -915,47 +965,131 @@ function renderTimeSeriesCharts() {
   });
 }
 
+// ── Shared Pearson helper & channel list for correlation section ──
+const CORR_CHANNELS = [
+  { key: "outdoorTemp",        label: "Outdoor Temp" },
+  { key: "outdoorHumidity",    label: "Outdoor Hum" },
+  { key: "mossWallTemp",       label: "Moss Wall" },
+  { key: "nonMossWallTemp",    label: "Non-Moss Wall" },
+  { key: "mossSurfaceTemp",    label: "Moss Surface" },
+  { key: "nonMossSurfaceTemp", label: "Non-Moss Surface" },
+  { key: "nearMossHumidity",   label: "Near-Moss Hum" },
+  { key: "nearNonMossHumidity",label: "Near Non-Moss Hum" },
+];
+
+function computePearson(ts, xKey, yKey) {
+  let n = 0, sx = 0, sy = 0, sxy = 0, sx2 = 0, sy2 = 0;
+  for (const row of ts) {
+    const x = row[xKey], y = row[yKey];
+    if (x == null || y == null) continue;
+    n++; sx += x; sy += y; sxy += x * y; sx2 += x * x; sy2 += y * y;
+  }
+  if (n < 3) return 0;
+  const num = n * sxy - sx * sy;
+  const den = Math.sqrt((n * sx2 - sx * sx) * (n * sy2 - sy * sy));
+  return den === 0 ? 0 : num / den;
+}
+
+function getCorrCellClass(v, isSelf) {
+  if (isSelf) return "corr-self";
+  const abs = Math.abs(v);
+  if (v >= 0.7)  return "corr-strong-pos";
+  if (v >= 0.4)  return "corr-mod-pos";
+  if (v <= -0.7) return "corr-strong-neg";
+  if (v <= -0.4) return "corr-mod-neg";
+  return "corr-weak";
+}
+
+// Build the full NxN correlation matrix and cache it
+function buildCorrelationMatrix(ts) {
+  const matrix = [];
+  for (let i = 0; i < CORR_CHANNELS.length; i++) {
+    const row = [];
+    for (let j = 0; j < CORR_CHANNELS.length; j++) {
+      row.push(i === j ? 1 : computePearson(ts, CORR_CHANNELS[i].key, CORR_CHANNELS[j].key));
+    }
+    matrix.push(row);
+  }
+  return matrix;
+}
+
+// ── Correlation Table (Pearson r values) ─────────────────────────
+function renderCorrelationTable() {
+  const head = document.getElementById("correlationMatrixHead");
+  const body = document.getElementById("correlationMatrixBody");
+  if (!head || !body) return;
+  if (!analysisData || analysisData.timeSeries.length < 3) {
+    head.innerHTML = "";
+    body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:1.5rem;">Insufficient data for correlation (need ≥ 3 data points)</td></tr>';
+    return;
+  }
+
+  const ts = analysisData.timeSeries;
+  const matrix = buildCorrelationMatrix(ts);
+
+  // Header row
+  head.innerHTML = '<tr><th></th>' +
+    CORR_CHANNELS.map(ch => `<th>${ch.label}</th>`).join('') +
+    '</tr>';
+
+  // Data rows
+  body.innerHTML = matrix.map((row, i) =>
+    '<tr>' +
+    `<td>${CORR_CHANNELS[i].label}</td>` +
+    row.map((v, j) => {
+      const cls = getCorrCellClass(v, i === j);
+      return `<td class="corr-cell ${cls}">${v.toFixed(2)}</td>`;
+    }).join('') +
+    '</tr>'
+  ).join('');
+}
+
+// ── Chart.js plugin: draw r-value labels on correlation bubbles ──
+const correlationLabelPlugin = {
+  id: 'correlationLabels',
+  afterDatasetsDraw(chart) {
+    const meta = chart.getDatasetMeta(0);
+    if (!meta || !meta.data) return;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.font = 'bold 9px "Space Grotesk", "IBM Plex Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const corrData = chart._corrDataPoints;
+    if (!corrData) { ctx.restore(); return; }
+
+    meta.data.forEach((el, idx) => {
+      const v = corrData[idx]?.v;
+      if (v == null) return;
+      const r = el.options.radius || el.radius || 0;
+      // Only show label if bubble is large enough
+      if (r < 6) return;
+      ctx.fillStyle = '#ebf3ea';
+      ctx.fillText(v.toFixed(2), el.x, el.y);
+    });
+    ctx.restore();
+  },
+};
+
 function renderCorrelationChart() {
   destroyChart("correlation");
   if (!analysisData || analysisData.timeSeries.length < 3) return;
   const ctx = document.getElementById("correlationChart").getContext("2d");
   const ts = analysisData.timeSeries;
-
-  // Compute live Pearson correlations from the hourly data
-  const channels = [
-    { key: "outdoorTemp",        label: "Outdoor Temp" },
-    { key: "outdoorHumidity",    label: "Outdoor Hum" },
-    { key: "mossWallTemp",       label: "Moss Wall" },
-    { key: "nonMossWallTemp",    label: "Non-Moss Wall" },
-    { key: "mossSurfaceTemp",    label: "Moss Surface" },
-    { key: "nonMossSurfaceTemp", label: "Non-Moss Surface" },
-    { key: "nearMossHumidity",   label: "Near-Moss Hum" },
-    { key: "nearNonMossHumidity",label: "Near Non-Moss Hum" },
-  ];
-
-  function pearson(xKey, yKey) {
-    let n = 0, sx = 0, sy = 0, sxy = 0, sx2 = 0, sy2 = 0;
-    for (const row of ts) {
-      const x = row[xKey], y = row[yKey];
-      if (x == null || y == null) continue;
-      n++; sx += x; sy += y; sxy += x * y; sx2 += x * x; sy2 += y * y;
-    }
-    if (n < 3) return 0;
-    const num = n * sxy - sx * sy;
-    const den = Math.sqrt((n * sx2 - sx * sx) * (n * sy2 - sy * sy));
-    return den === 0 ? 0 : num / den;
-  }
+  const channels = CORR_CHANNELS;
 
   const dataPoints = [];
   for (let i = 0; i < channels.length; i++) {
     for (let j = 0; j < channels.length; j++) {
-      const v = i === j ? 1 : pearson(channels[i].key, channels[j].key);
+      const v = i === j ? 1 : computePearson(ts, channels[i].key, channels[j].key);
       dataPoints.push({ x: j, y: i, v });
     }
   }
 
   charts.correlation = new Chart(ctx, {
     type: "bubble",
+    plugins: [correlationLabelPlugin],
     data: {
       datasets: [{
         data: dataPoints.map(p => ({ x: p.x, y: p.y, r: Math.abs(p.v) * 12 + 2 })),
@@ -984,7 +1118,7 @@ function renderCorrelationChart() {
               const idx = ctx.dataIndex;
               const i = Math.floor(idx / channels.length);
               const j = idx % channels.length;
-              return `${channels[i].label} ↔ ${channels[j].label}: ${dataPoints[idx].v.toFixed(2)}`;
+              return `${channels[i].label} ↔ ${channels[j].label}: r = ${dataPoints[idx].v.toFixed(4)}`;
             },
           },
         },
@@ -1003,6 +1137,9 @@ function renderCorrelationChart() {
       },
     },
   });
+
+  // Attach data for the label plugin
+  charts.correlation._corrDataPoints = dataPoints;
 }
 
 function renderEvapoScatter() {
@@ -1234,6 +1371,7 @@ function renderAll() {
   renderHumidityScatterChart();
   renderHumidityBufferChart();
   renderTimeSeriesCharts();
+  renderCorrelationTable();
   renderCorrelationChart();
   renderEvapoScatter();
   renderEvapoBi();

@@ -1,5 +1,5 @@
 """
-Entry point to run the Eco-Cooling Telegram bot as a standalone process.
+Entry point to run the Urban Heat Telegram bot as a standalone process.
 
 Usage:
     python run_telegram_bot.py

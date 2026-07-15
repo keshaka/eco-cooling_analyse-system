@@ -1,7 +1,8 @@
 import sys
 import re
+from pathlib import Path
 
-file_path = 'c:/Users/keshaka/Documents/GitHub/eco-cooling_analyse-system/backend/app/crud/data.py'
+file_path = Path(__file__).resolve().parent / 'app' / 'crud' / 'data.py'
 
 with open(file_path, 'r', encoding='utf-8') as f:
     content = f.read()

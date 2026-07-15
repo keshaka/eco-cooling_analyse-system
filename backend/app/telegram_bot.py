@@ -1,5 +1,5 @@
 """
-Telegram bot for the Eco-Cooling Monitoring System.
+Telegram bot for the Urban Heat Monitoring System.
 
 Features:
   /start   — Welcome message + display user's chat ID

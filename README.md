@@ -48,7 +48,7 @@ flowchart TB
 ## 📦 Project Structure
 
 ```bash
-eco-cooling_analyse-system/
+urban-heat/
 ├── backend/                  # FastAPI Application, Database Schema, and Telegram Bot
 │   ├── app/
 │   │   ├── api/routes/       # Core REST Endpoints (Ingestion, Paginated History, Stats)
@@ -159,7 +159,7 @@ The administrative Telegram bot manages system health, DB upkeep, and alerts adm
 
 ## 🗄️ Database Setup (MSSQL)
 
-Configure your Microsoft SQL Server instance using the schema located in [backend/schema.sql](file:///c:/Users/keshaka/Documents/GitHub/eco-cooling_analyse-system/backend/schema.sql).
+Configure your Microsoft SQL Server instance using the schema located in [backend/schema.sql](backend/schema.sql).
 
 ### Table Schema Highlights
 * **`moss_data`**: Chronological log of ambient temperatures, humidity, moss microclimate conditions, moss surface infrared measurements, and structural wall temperatures.
@@ -225,3 +225,81 @@ The frontend client utilizes a high-contrast, premium dark mode styling tailored
 * **Mathematical Analytics (`analysis.html`)**: Calculates active thermal characteristics, detailing the cooling delta trends and peak heat load reductions.
 * **The Moss Effect (`moss-effect.html`)**: Visually decomposes microclimate buffering, plotting humidity-buffering curves to illustrate evapotranspiration cooling.
 * **Structured Exporter (`export.html`)**: Packages selected sensor metrics into CSV data structures for downstream modeling in specialized scientific packages.
+
+---
+
+## ⚡ API Endpoints Reference
+
+The FastAPI backend exposes a robust series of REST API endpoints categorized by function: Ingestion and Analytics.
+
+### 1. Telemetry Ingestion Endpoints
+
+#### 📥 Ingest Moss Node Telemetry (`POST /api/data/moss`)
+- **Description**: Receives JSON streams from the Moss physical sensor node containing outdoor microclimate readings, near-moss boundary conditions, and inner wall temperatures.
+- **Request Body Contract**:
+  ```json
+  {
+    "outdoor_temp": 28.5,
+    "outdoor_humidity": 65.2,
+    "moss_surface_temp": 24.1,
+    "near_moss_temp": 25.3,
+    "near_moss_humidity": 78.4,
+    "wall_temp": 22.8
+  }
+  ```
+- **Response**: Returns standard HTTP 201 with the created record and server-side generated database ID and timezone-aware IST timestamp.
+
+#### 📥 Ingest Control Node Telemetry (`POST /api/data/non-moss`)
+- **Description**: Receives telemetry payload from the dry non-moss control node.
+- **Request Body Contract**:
+  ```json
+  {
+    "non_moss_surface_temp": 32.4,
+    "near_non_moss_temp": 29.8,
+    "near_non_moss_humidity": 60.1,
+    "wall_temp": 28.9
+  }
+  ```
+
+### 2. Analytics & Reporting Endpoints
+
+#### 📊 Fetch Latest Readings (`GET /api/data/latest`)
+- **Description**: Retrieves the single latest recorded row from both the `moss` and `non_moss` tables and computes the current instantaneous contactless surface cooling delta ($T_{Control} - T_{Moss}$).
+- **Response Format**:
+  ```json
+  {
+    "moss": { ... },
+    "nonMoss": { ... },
+    "coolingDeltaSurface": 8.3
+  }
+  ```
+
+#### 🗓️ Fetch History (`GET /api/data/history`)
+- **Query Parameters**:
+  - `start` (string, required): Start date in `YYYY-MM-DD`
+  - `end` (string, required): End date in `YYYY-MM-DD`
+- **Description**: Retrieves all non-paginated telemetry records within the designated date range.
+
+#### 📖 Fetch Paginated & Filtered History (`GET /api/data/history/paginated`)
+- **Query Parameters**:
+  - `start` (required), `end` (required): Dates in `YYYY-MM-DD`
+  - `startTime` (optional): Filter bounds in `HH:MM`
+  - `endTime` (optional): Filter bounds in `HH:MM`
+  - `minHumidity` / `maxHumidity` (optional, float 0-100): Filter bounds for humidity measurements
+  - `page` (optional, default=1): Page number (1-indexed)
+  - `per_page` (optional, default=30): Items per page
+- **Description**: Merges and returns page-by-page rows from both tables matching active filters, suitable for rendering tabular historical logs.
+
+#### ⚖️ Side-by-Side Comparison (`GET /api/data/compare`)
+- **Description**: Queries database to calculate aggregations comparing moss-covered versus control wall conditions, including average temperatures, peak differences, and minimum structural thermal loads.
+
+#### 🧬 Deep Analysis Report (`GET /api/data/analysis`)
+- **Query Parameters**: Same filters as `/history/paginated` (dates, times, humidity ranges).
+- **Description**: Performs high-performance SQL analytical grouping and returns a unified scientific analysis payload containing:
+  - `timeSeries`: Hourly aggregated average trends for graph visualization.
+  - `descriptiveStats`: Mean, standard deviation, min, and max for each metric.
+  - `diurnal`: Temperature fluctuations during distinct diurnal hours.
+  - `cooling`: Average temperature buffering calculations.
+  - `humidityBuffering`: Aggregated readings grouped by outdoor humidity ranges to demonstrate evapotranspiration capacity.
+  - `hourlyPattern`: 24-hour cycle aggregation showing thermal lag and dampening behavior.
+

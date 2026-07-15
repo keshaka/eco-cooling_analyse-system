@@ -354,6 +354,15 @@ def get_analysis_data(
         nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
         params["end_tm"] = end_time
 
+    if start_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
+
     if min_humidity is not None:
         moss_wheres.append("m.outdoor_humidity >= :min_hum")
         moss_wheres.append("m.near_moss_humidity >= :min_hum")
@@ -469,6 +478,15 @@ def get_analysis_descriptive_stats(
         moss_wheres.append("m.[timestamp] <= :end_dt")
         nm_wheres.append("n.[timestamp] <= :end_dt")
         params["end_dt"] = datetime.combine(end_date, time.max)
+
+    if start_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
 
     if start_time is not None:
         moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
@@ -612,6 +630,15 @@ def get_analysis_diurnal(
         nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
         params["end_tm"] = end_time
 
+    if start_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
+
     if min_humidity is not None:
         moss_wheres.append("m.outdoor_humidity >= :min_hum")
         moss_wheres.append("m.near_moss_humidity >= :min_hum")
@@ -698,6 +725,12 @@ def get_analysis_cooling(
     if end_time is not None:
         wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
         params["end_tm"] = end_time
+    if start_time is not None:
+        wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
     if min_humidity is not None:
         wheres.append("m.outdoor_humidity >= :min_hum")
         wheres.append("m.near_moss_humidity >= :min_hum")
@@ -736,6 +769,12 @@ def get_analysis_cooling(
     if end_date is not None:
         nm_wheres.append("n.[timestamp] <= :end_dt")
         nm_params["end_dt"] = datetime.combine(end_date, time.max)
+    if start_time is not None:
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        nm_params["start_tm"] = start_time
+    if end_time is not None:
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        nm_params["end_tm"] = end_time
     if start_time is not None:
         nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
         nm_params["start_tm"] = start_time
@@ -825,6 +864,15 @@ def get_analysis_humidity_buffering(
         moss_wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
         nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
         params["end_tm"] = end_time
+
+    if start_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
     if min_humidity is not None:
         moss_wheres.append("m.outdoor_humidity >= :min_hum")
         moss_wheres.append("m.near_moss_humidity >= :min_hum")
@@ -894,6 +942,15 @@ def get_analysis_hourly_pattern(
         moss_wheres.append("m.[timestamp] <= :end_dt")
         nm_wheres.append("n.[timestamp] <= :end_dt")
         params["end_dt"] = datetime.combine(end_date, time.max)
+
+    if start_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) >= :start_tm")
+        params["start_tm"] = start_time
+    if end_time is not None:
+        moss_wheres.append("CAST(m.[timestamp] AS TIME) <= :end_tm")
+        nm_wheres.append("CAST(n.[timestamp] AS TIME) <= :end_tm")
+        params["end_tm"] = end_time
 
     if start_time is not None:
         moss_wheres.append("CAST(m.[timestamp] AS TIME) >= :start_tm")
